@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, CSSProperties } from "react";
+import { useState, useMemo, useEffect, CSSProperties } from "react";
 import { JOBS, Job } from "@/lib/jobs";
 
 /* ============================================================
@@ -120,7 +120,7 @@ function LogoMark({ height = 38 }: { height?: number }) {
 /* ============================================================
    TopNav
    ============================================================ */
-function TopNav({ logoSize = 38 }: { logoSize?: number }) {
+function TopNav({ logoSize = 38, isMobile = false }: { logoSize?: number; isMobile?: boolean }) {
   const navH = Math.max(60, logoSize + 28);
   return (
     <header
@@ -138,7 +138,7 @@ function TopNav({ logoSize = 38 }: { logoSize?: number }) {
       <LogoMark height={logoSize} />
 
       {/* Search */}
-      <div style={{ flex: 1, maxWidth: 420, marginLeft: 16, position: "relative" }}>
+      <div style={{ flex: 1, maxWidth: 420, marginLeft: 16, position: "relative", display: isMobile ? "none" : undefined }}>
         <span
           style={{
             position: "absolute",
@@ -207,10 +207,12 @@ function TopNav({ logoSize = 38 }: { logoSize?: number }) {
         >
           MT
         </div>
-        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.15 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Marcus Tan</span>
-          <span style={{ fontSize: 11, color: "var(--warm-grey)" }}>Tan &amp; Co.</span>
-        </div>
+        {!isMobile && (
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.15 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Marcus Tan</span>
+            <span style={{ fontSize: 11, color: "var(--warm-grey)" }}>Tan &amp; Co.</span>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -1001,6 +1003,7 @@ function MapArea({
   setHovered,
   onAccept,
   onPost,
+  style,
 }: {
   jobs: Job[];
   selectedId: string | null;
@@ -1009,11 +1012,12 @@ function MapArea({
   setHovered: (id: string | null) => void;
   onAccept: (job: Job) => void;
   onPost: () => void;
+  style?: CSSProperties;
 }) {
   const selectedJob = jobs.find((j) => j.id === selectedId);
 
   return (
-    <div style={{ position: "relative", flex: 1, overflow: "hidden", background: "#ECE9E1" }}>
+    <div style={{ position: "relative", flex: 1, overflow: "hidden", background: "#ECE9E1", ...style }}>
       <MapBase />
 
       {/* Pins */}
@@ -1181,6 +1185,20 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
 }
 
 /* ============================================================
+   Responsive helper
+   ============================================================ */
+function useIsMobile(bp = 768) {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const update = () => setMobile(window.innerWidth < bp);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [bp]);
+  return mobile;
+}
+
+/* ============================================================
    Dashboard — main export
    ============================================================ */
 export default function Dashboard() {
@@ -1193,6 +1211,7 @@ export default function Dashboard() {
   const [hoveredId, setHovered] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
   const filtered = useMemo(
     () =>
@@ -1223,23 +1242,27 @@ export default function Dashboard() {
         background: "var(--off-white)",
       }}
     >
-      <TopNav />
+      <TopNav isMobile={isMobile} />
 
-      <main style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      <main style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
         {/* Left panel */}
         <aside
           style={{
-            width: panelOpen ? 380 : 0,
+            width: isMobile ? "100%" : (panelOpen ? 380 : 0),
             flexShrink: 0,
             background: "var(--off-white)",
-            borderRight: "1px solid var(--hair)",
+            borderRight: isMobile ? "none" : "1px solid var(--hair)",
+            borderTop: isMobile ? "1px solid var(--hair)" : "none",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
-            transition: "width 220ms var(--ease)",
+            transition: isMobile ? "none" : "width 220ms var(--ease)",
+            order: isMobile ? 1 : 0,
+            flex: isMobile ? "1 1 auto" : undefined,
+            minHeight: isMobile ? 0 : undefined,
           }}
         >
-          {panelOpen && (
+          {(isMobile || panelOpen) && (
             <>
               <FilterBar filters={filters} setFilters={setFilters} count={filtered.length} />
               <div
@@ -1281,25 +1304,27 @@ export default function Dashboard() {
           )}
         </aside>
 
-        {/* Collapse handle */}
-        <button
-          onClick={() => setPanelOpen(!panelOpen)}
-          aria-label={panelOpen ? "Collapse panel" : "Expand panel"}
-          style={{
-            width: 20,
-            background: "var(--off-white)",
-            border: "none",
-            borderRight: "1px solid var(--hair)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--warm-grey)",
-            flexShrink: 0,
-          }}
-        >
-          <Icon d={panelOpen ? I.chevL : I.chevR} size={16} />
-        </button>
+        {/* Collapse handle — desktop only */}
+        {!isMobile && (
+          <button
+            onClick={() => setPanelOpen(!panelOpen)}
+            aria-label={panelOpen ? "Collapse panel" : "Expand panel"}
+            style={{
+              width: 20,
+              background: "var(--off-white)",
+              border: "none",
+              borderRight: "1px solid var(--hair)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--warm-grey)",
+              flexShrink: 0,
+            }}
+          >
+            <Icon d={panelOpen ? I.chevL : I.chevR} size={16} />
+          </button>
+        )}
 
         {/* Map */}
         <MapArea
@@ -1310,6 +1335,7 @@ export default function Dashboard() {
           setHovered={setHovered}
           onAccept={onAccept}
           onPost={onPost}
+          style={isMobile ? { order: 0, flex: "0 0 50vh" } : undefined}
         />
       </main>
 
