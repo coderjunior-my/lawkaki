@@ -1,26 +1,351 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
+/* ============================================================
+   Law Kaki — Design Tokens
+   B&W discipline, amber #E89020 as the single intentional accent.
+   One typeface (Plus Jakarta Sans), weight-driven hierarchy.
+   ============================================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ---------- COLOUR ---------- */
+  --black:       #0F1F33;
+  --off-white:   #FAF7F2;
+  --warm-grey:   #6B7280;
+  --pale-grey:   #EDEAE2;
+  --hair:        #E0DDD3;
+  --amber:       #E89020;
+  --amber-soft:  #F9DDB4;
+  --green:       #1F8A5B;
+  --green-soft:  #CFE8DC;
+  --red:         #B91C1C;
+  --red-soft:    #F4D3D3;
+  --white:       #FFFFFF;
+
+  /* Semantic */
+  --fg:               var(--black);
+  --fg-muted:         var(--warm-grey);
+  --fg-on-dark:       var(--off-white);
+  --bg:               var(--off-white);
+  --bg-card:          #FFFFFF;
+  --bg-input:         #FFFFFF;
+  --bg-dark:          var(--black);
+
+  --border:           var(--hair);
+  --border-strong:    var(--black);
+  --divider:          var(--pale-grey);
+
+  --accent:           var(--amber);
+  --accent-soft:      var(--amber-soft);
+  --success:          var(--green);
+  --success-soft:     var(--green-soft);
+  --warning:          var(--amber);
+  --warning-soft:     var(--amber-soft);
+  --danger:           var(--red);
+  --danger-soft:      var(--red-soft);
+
+  /* ---------- TYPE ---------- */
+  --font-sans: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --fs-display:  56px;
+  --fs-h1:       40px;
+  --fs-h2:       28px;
+  --fs-h3:       20px;
+  --fs-h4:       17px;
+  --fs-body:     15px;
+  --fs-small:    13px;
+  --fs-micro:    11px;
+
+  --lh-tight:    1.1;
+  --lh-snug:     1.25;
+  --lh-default:  1.5;
+  --lh-loose:    1.65;
+
+  --tracking-tight:   -0.02em;
+  --tracking-snug:    -0.01em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.04em;
+  --tracking-eyebrow: 0.1em;
+
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+  --fw-black:    800;
+
+  /* ---------- SPACING ---------- */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  32px;
+  --space-8:  40px;
+  --space-9:  48px;
+  --space-10: 64px;
+
+  /* ---------- RADIUS ---------- */
+  --radius-0:    0;
+  --radius-1:    4px;
+  --radius-2:    8px;
+  --radius-3:   12px;
+  --radius-pill: 999px;
+
+  /* ---------- ELEVATION ---------- */
+  --shadow-card:    0 1px 0 0 rgba(13,13,13,0.04), 0 1px 2px 0 rgba(13,13,13,0.04);
+  --shadow-raised:  0 4px 12px -2px rgba(13,13,13,0.08), 0 2px 4px -2px rgba(13,13,13,0.06);
+  --shadow-overlay: 0 16px 40px -8px rgba(13,13,13,0.18);
+  --ring-focus:     0 0 0 2px var(--off-white), 0 0 0 4px var(--black);
+  --ring-amber:     0 0 0 2px var(--off-white), 0 0 0 4px var(--amber);
+
+  /* ---------- MOTION ---------- */
+  --ease:        cubic-bezier(0.2, 0.6, 0.2, 1);
+  --dur-snap:    140ms;
+  --dur-default: 220ms;
+  --dur-page:    380ms;
+
+  /* ---------- LAYOUT ---------- */
+  --max-content: 1200px;
+  --max-prose:   640px;
+  --nav-height:  60px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ============================================================
+   Base
+   ============================================================ */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-default);
+  font-feature-settings: "ss01", "cv11";
+}
+
+::selection { background: var(--black); color: var(--off-white); }
+
+/* Tabular figures */
+.tabular, .mono, .price, .time {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ============================================================
+   Button
+   ============================================================ */
+
+.lk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.005em;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--black);
+  background: var(--black);
+  color: var(--off-white);
+  cursor: pointer;
+  transition: background var(--dur-snap) var(--ease),
+              transform  var(--dur-snap) var(--ease),
+              opacity    var(--dur-snap) var(--ease);
+}
+.lk-btn:hover  { background: #1f1f1f; }
+.lk-btn:active { transform: translateY(1px); opacity: 0.92; }
+.lk-btn:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.lk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.lk-btn--secondary {
+  background: transparent;
+  color: var(--black);
+}
+.lk-btn--secondary:hover { background: var(--pale-grey); }
+
+.lk-btn--ghost {
+  background: transparent;
+  color: var(--black);
+  border-color: transparent;
+}
+.lk-btn--ghost:hover { background: var(--pale-grey); }
+
+.lk-btn--accent {
+  background: var(--amber);
+  color: var(--black);
+  border-color: var(--amber);
+}
+.lk-btn--accent:hover { background: #D88018; border-color: #D88018; }
+.lk-btn--accent:focus-visible { box-shadow: var(--ring-amber); }
+
+.lk-btn--sm { height: 36px; padding: 0 16px; font-size: var(--fs-micro); }
+.lk-btn--lg { height: 52px; padding: 0 26px; font-size: var(--fs-body); }
+
+/* ============================================================
+   Chip / Badge
+   ============================================================ */
+
+.lk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  color: var(--black);
+  background: var(--bg-card);
+  line-height: 1;
+}
+.lk-chip--sm      { padding: 4px 10px; font-size: var(--fs-micro); }
+.lk-chip--solid   { background: var(--black);       color: var(--off-white); border-color: var(--black); }
+.lk-chip--amber   { background: var(--amber-soft);  border-color: var(--amber); color: var(--black); }
+.lk-chip--success { background: var(--green-soft);  border-color: var(--green); color: var(--green); }
+.lk-chip--danger  { background: var(--red-soft);    border-color: var(--red);   color: var(--red); }
+
+/* ============================================================
+   Card
+   ============================================================ */
+
+.lk-card {
+  background: var(--bg-card);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: var(--space-5);
+  transition: box-shadow var(--dur-snap) var(--ease),
+              border-color var(--dur-snap) var(--ease),
+              transform var(--dur-snap) var(--ease);
+}
+.lk-card--tap {
+  cursor: pointer;
+  display: block;
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  font-family: inherit;
+  width: 100%;
+}
+.lk-card--tap:hover {
+  border-color: var(--warm-grey);
+  box-shadow: var(--shadow-raised);
+}
+.lk-card--tap:active { transform: translateY(1px); }
+
+/* ============================================================
+   Avatar
+   ============================================================ */
+
+.lk-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--pale-grey);
+  color: var(--black);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-small);
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.lk-avatar--sm { width: 32px; height: 32px; font-size: var(--fs-micro); }
+.lk-avatar--lg { width: 56px; height: 56px; font-size: var(--fs-body); }
+
+/* ============================================================
+   Input
+   ============================================================ */
+
+.lk-input {
+  width: 100%;
+  height: 48px;
+  background: var(--bg-input);
+  border: 1.5px solid var(--hair);
+  border-radius: 14px;
+  padding: 0 16px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  color: var(--black);
+  transition: border-color var(--dur-snap) var(--ease),
+              box-shadow   var(--dur-snap) var(--ease);
+}
+.lk-input::placeholder { color: var(--warm-grey); font-weight: 400; }
+.lk-input:hover  { border-color: var(--warm-grey); }
+.lk-input:focus  {
+  outline: none;
+  border-color: var(--black);
+  box-shadow: 0 0 0 4px rgba(13,13,13,0.06);
+}
+
+/* ============================================================
+   Range slider
+   ============================================================ */
+
+input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hair);
+  outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--black);
+  cursor: pointer;
+  border: 2px solid var(--off-white);
+  box-shadow: 0 1px 4px rgba(15,31,51,0.2);
+}
+input[type=range]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--black);
+  cursor: pointer;
+  border: 2px solid var(--off-white);
+}
+
+/* ============================================================
+   Scrollbar
+   ============================================================ */
+
+aside::-webkit-scrollbar, .lk-scroll::-webkit-scrollbar { width: 10px; }
+aside::-webkit-scrollbar-thumb, .lk-scroll::-webkit-scrollbar-thumb {
+  background: var(--hair);
+  border-radius: 999px;
+  border: 2px solid var(--off-white);
+}
+
+/* ============================================================
+   Pulse animation (urgent pins)
+   ============================================================ */
+
+@keyframes lk-pulse {
+  0%   { transform: translateX(-50%) scale(0.6); opacity: 0.6; }
+  70%  { transform: translateX(-50%) scale(1.6); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1.6); opacity: 0; }
 }
