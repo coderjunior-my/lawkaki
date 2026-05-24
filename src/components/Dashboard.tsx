@@ -54,6 +54,7 @@ const I = {
     "M10 9H8",
   ],
   rm:     "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17l5-5-5-5", "M21 12H9"],
   chevL:  "m15 18-6-6 6-6",
   chevR:  "m9 18 6-6-6-6",
   close:  "M18 6 6 18M6 6l12 12",
@@ -120,7 +121,24 @@ function LogoMark({ height = 38 }: { height?: number }) {
 /* ============================================================
    TopNav
    ============================================================ */
-function TopNav({ logoSize = 38, isMobile = false }: { logoSize?: number; isMobile?: boolean }) {
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function TopNav({
+  logoSize = 38,
+  isMobile = false,
+  onSignOut,
+  userName = "",
+}: {
+  logoSize?: number;
+  isMobile?: boolean;
+  onSignOut?: () => void;
+  userName?: string;
+}) {
   const navH = Math.max(60, logoSize + 28);
   return (
     <header
@@ -190,30 +208,37 @@ function TopNav({ logoSize = 38, isMobile = false }: { logoSize?: number; isMobi
         />
       </button>
 
-      {/* User */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          cursor: "pointer",
-          padding: "4px 10px 4px 4px",
-          borderRadius: 999,
-        }}
-      >
+      {/* User avatar */}
+      {userName && (
         <div
           className="lk-avatar lk-avatar--sm"
-          style={{ background: "var(--black)", color: "var(--off-white)" }}
+          style={{ background: "var(--black)", color: "var(--off-white)", flexShrink: 0 }}
+          title={userName}
         >
-          MT
+          {getInitials(userName)}
         </div>
-        {!isMobile && (
-          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.15 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Marcus Tan</span>
-            <span style={{ fontSize: 11, color: "var(--warm-grey)" }}>Tan &amp; Co.</span>
-          </div>
-        )}
-      </div>
+      )}
+
+      {/* Sign out */}
+      <button
+        onClick={onSignOut}
+        style={{
+          ...iconBtnStyle,
+          ...(isMobile ? {} : {
+            width: "auto",
+            padding: "0 14px",
+            gap: 7,
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: "inherit",
+            color: "var(--warm-grey)",
+          }),
+        }}
+        aria-label="Sign out"
+      >
+        <Icon d={I.logout} size={16} />
+        {!isMobile && <span>Sign out</span>}
+      </button>
     </header>
   );
 }
@@ -1201,7 +1226,7 @@ function useIsMobile(bp = 768) {
 /* ============================================================
    Dashboard — main export
    ============================================================ */
-export default function Dashboard() {
+export default function Dashboard({ onSignOut, userName = "" }: { onSignOut?: () => void; userName?: string }) {
   const [filters, setFilters] = useState<Filters>({
     date: "This week",
     docType: "All",
@@ -1242,7 +1267,7 @@ export default function Dashboard() {
         background: "var(--off-white)",
       }}
     >
-      <TopNav isMobile={isMobile} />
+      <TopNav isMobile={isMobile} onSignOut={onSignOut} userName={userName} />
 
       <main style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
         {/* Left panel */}
