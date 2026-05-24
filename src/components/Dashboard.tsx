@@ -3,6 +3,8 @@
 import { useState, useMemo, useEffect, CSSProperties } from "react";
 import { JOBS, Job } from "@/lib/jobs";
 import MyJobs from "@/components/MyJobs";
+import MyPickedJobs from "@/components/MyPickedJobs";
+import { PickedJob, StatusFilter, getTodayPickedJobs } from "@/lib/pickedJobs";
 
 /* ============================================================
    Icon — inline Lucide-style SVGs
@@ -1225,6 +1227,95 @@ function useIsMobile(bp = 768) {
 }
 
 /* ============================================================
+   Today route map — shown in Picked › Today view
+   ============================================================ */
+function TodayRouteMap({ jobs, style }: { jobs: PickedJob[]; style?: CSSProperties }) {
+  if (jobs.length === 0) return null;
+  const totalFee = jobs.reduce((s, j) => s + j.fee, 0);
+
+  return (
+    <div style={{ position: "relative", flex: 1, overflow: "hidden", background: "#ECE9E1", ...style }}>
+      <MapBase />
+
+      {/* Dashed route overlay */}
+      <svg
+        viewBox="0 0 1000 700"
+        preserveAspectRatio="xMidYMid slice"
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+      >
+        {jobs.length > 1 && (
+          <polyline
+            points={jobs.map((j) => `${j.x},${j.y}`).join(" ")}
+            fill="none"
+            stroke="#E89020"
+            strokeWidth="3"
+            strokeDasharray="10 7"
+            strokeLinecap="round"
+            opacity="0.9"
+          />
+        )}
+      </svg>
+
+      {/* Numbered pins */}
+      {jobs.map((j, idx) => (
+        <div
+          key={j.id}
+          style={{
+            position: "absolute",
+            left: `${(j.x / 1000) * 100}%`,
+            top: `${(j.y / 700) * 100}%`,
+            transform: "translate(-50%, -50%)",
+            zIndex: 10,
+          }}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 999,
+              background: "#E89020",
+              border: "2.5px solid #FFFFFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 3px 10px rgba(15,31,51,0.24)",
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#0F1F33" }}>{idx + 1}</span>
+          </div>
+        </div>
+      ))}
+
+      {/* Legend */}
+      <div
+        style={{
+          position: "absolute",
+          top: 16,
+          left: 16,
+          background: "#FFFFFF",
+          border: "1px solid var(--hair)",
+          borderRadius: 10,
+          padding: "10px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          boxShadow: "0 4px 12px -4px rgba(15,31,51,0.08)",
+          zIndex: 5,
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warm-grey)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          Today
+        </span>
+        <span style={{ width: 4, height: 4, borderRadius: 999, background: "var(--warm-grey)", display: "inline-block" }} />
+        <span style={{ fontSize: 12, fontWeight: 600 }}>{jobs.length} stop{jobs.length !== 1 ? "s" : ""}</span>
+        <span style={{ width: 4, height: 4, borderRadius: 999, background: "var(--warm-grey)", display: "inline-block" }} />
+        <span style={{ fontSize: 12, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>RM {totalFee}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    Dashboard — main export
    ============================================================ */
 export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: { onSignOut?: () => void; userName?: string; userPhone?: string }) {
@@ -1233,7 +1324,10 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
     docType: "All",
     minFee: 50,
   });
-  const [view, setView] = useState<"browse" | "my-jobs">("browse");
+  const [view, setView] = useState<"browse" | "my-jobs" | "picked">("browse");
+  const [pickedFilter, setPickedFilter] = useState<StatusFilter>("today");
+  const showTodayMap   = view === "picked" && pickedFilter === "today";
+  const todayPickedJobs = showTodayMap ? getTodayPickedJobs() : [];
   const [selectedId, setSelected] = useState<string | null>("lk-2026-0418");
   const [hoveredId, setHovered] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -1283,10 +1377,12 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
         {/* Left panel */}
         <aside
           style={{
-            width: isMobile ? "100%" : (panelOpen ? 380 : 0),
+            width: isMobile ? "100%"
+              : view === "picked" ? (showTodayMap ? 380 : "100%")
+              : (panelOpen ? 380 : 0),
             flexShrink: 0,
             background: "var(--off-white)",
-            borderRight: isMobile ? "none" : "1px solid var(--hair)",
+            borderRight: (isMobile || (view === "picked" && !showTodayMap)) ? "none" : "1px solid var(--hair)",
             borderTop: isMobile ? "1px solid var(--hair)" : "none",
             display: "flex",
             flexDirection: "column",
@@ -1308,26 +1404,32 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
                   flexShrink: 0,
                 }}
               >
-                {(["browse", "my-jobs"] as const).map((v) => (
+                {(
+                  [
+                    { id: "browse",  label: "Browse"  },
+                    { id: "my-jobs", label: "Posted"  },
+                    { id: "picked",  label: "Picked"  },
+                  ] as { id: typeof view; label: string }[]
+                ).map(({ id, label }) => (
                   <button
-                    key={v}
-                    onClick={() => setView(v)}
+                    key={id}
+                    onClick={() => setView(id)}
                     style={{
                       flex: 1,
                       height: 44,
                       background: "transparent",
                       border: "none",
-                      borderBottom: `2px solid ${view === v ? "var(--black)" : "transparent"}`,
+                      borderBottom: `2px solid ${view === id ? "var(--black)" : "transparent"}`,
                       cursor: "pointer",
                       fontFamily: "inherit",
                       fontSize: 13,
-                      fontWeight: view === v ? 700 : 500,
-                      color: view === v ? "var(--black)" : "var(--warm-grey)",
+                      fontWeight: view === id ? 700 : 500,
+                      color: view === id ? "var(--black)" : "var(--warm-grey)",
                       letterSpacing: "-0.01em",
                       transition: "color 140ms, border-color 140ms",
                     }}
                   >
-                    {v === "browse" ? "Browse jobs" : "My posted jobs"}
+                    {label}
                   </button>
                 ))}
               </div>
@@ -1338,6 +1440,8 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
                     setToast(`Confirmed. ${name.split(" ")[0]} will cover this job.`)
                   }
                 />
+              ) : view === "picked" ? (
+                <MyPickedJobs onFilterChange={setPickedFilter} />
               ) : (
                 <>
                   <FilterBar filters={filters} setFilters={setFilters} count={filtered.length} />
@@ -1382,8 +1486,8 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
           )}
         </aside>
 
-        {/* Collapse handle — desktop only */}
-        {!isMobile && (
+        {/* Collapse handle — desktop only, hidden when showing picked jobs */}
+        {!isMobile && view !== "picked" && (
           <button
             onClick={() => setPanelOpen(!panelOpen)}
             aria-label={panelOpen ? "Collapse panel" : "Expand panel"}
@@ -1404,17 +1508,24 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
           </button>
         )}
 
-        {/* Map */}
-        <MapArea
-          jobs={filtered}
-          selectedId={selectedId}
-          hoveredId={hoveredId}
-          setSelected={setSelected}
-          setHovered={setHovered}
-          onAccept={onAccept}
-          onPost={onPost}
-          style={isMobile ? { order: 0, flex: "0 0 50vh" } : undefined}
-        />
+        {/* Map area — browse/posted: full map · picked+today: route map · picked+other: hidden */}
+        {showTodayMap ? (
+          <TodayRouteMap
+            jobs={todayPickedJobs}
+            style={isMobile ? { order: 0, flex: "0 0 42vh" } : undefined}
+          />
+        ) : view !== "picked" ? (
+          <MapArea
+            jobs={filtered}
+            selectedId={selectedId}
+            hoveredId={hoveredId}
+            setSelected={setSelected}
+            setHovered={setHovered}
+            onAccept={onAccept}
+            onPost={onPost}
+            style={isMobile ? { order: 0, flex: "0 0 50vh" } : undefined}
+          />
+        ) : null}
       </main>
 
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
