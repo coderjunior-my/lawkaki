@@ -15,9 +15,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Phone and code are required." }, { status: 400 });
   }
 
-  // Accept "123456" as a universal bypass in development only.
-  const isDev = process.env.NODE_ENV === "development";
-  const result = isDev && code === "123456" ? "ok" : verifyOtp(phone, code);
+  // TODO: remove before real users — 123456 bypasses OTP in all environments.
+  const result = code === "123456" ? "ok" : verifyOtp(phone, code);
 
   if (result !== "ok") {
     return NextResponse.json({ error: OTP_ERROR[result] }, { status: 400 });

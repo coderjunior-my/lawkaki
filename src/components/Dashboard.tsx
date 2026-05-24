@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, CSSProperties } from "react";
 import { JOBS, Job } from "@/lib/jobs";
+import MyJobs from "@/components/MyJobs";
 
 /* ============================================================
    Icon — inline Lucide-style SVGs
@@ -1232,6 +1233,7 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
     docType: "All",
     minFee: 50,
   });
+  const [view, setView] = useState<"browse" | "my-jobs">("browse");
   const [selectedId, setSelected] = useState<string | null>("lk-2026-0418");
   const [hoveredId, setHovered] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -1297,42 +1299,85 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
         >
           {(isMobile || panelOpen) && (
             <>
-              <FilterBar filters={filters} setFilters={setFilters} count={filtered.length} />
+              {/* Tab bar */}
               <div
                 style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: 10,
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
+                  background: "#FFFFFF",
+                  borderBottom: "1px solid var(--hair)",
+                  flexShrink: 0,
                 }}
               >
-                {filtered.map((j) => (
-                  <JobCard
-                    key={j.id}
-                    job={j}
-                    selected={selectedId === j.id}
-                    onSelect={setSelected}
-                    onHover={setHovered}
-                    onAccept={onAccept}
-                  />
-                ))}
-                {filtered.length === 0 && (
-                  <div
+                {(["browse", "my-jobs"] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
                     style={{
-                      padding: 32,
-                      textAlign: "center",
-                      color: "var(--warm-grey)",
+                      flex: 1,
+                      height: 44,
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: `2px solid ${view === v ? "var(--black)" : "transparent"}`,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
                       fontSize: 13,
+                      fontWeight: view === v ? 700 : 500,
+                      color: view === v ? "var(--black)" : "var(--warm-grey)",
+                      letterSpacing: "-0.01em",
+                      transition: "color 140ms, border-color 140ms",
                     }}
                   >
-                    No jobs match these filters.
-                    <br />
-                    Try widening your fee range or date.
-                  </div>
-                )}
+                    {v === "browse" ? "Browse jobs" : "My posted jobs"}
+                  </button>
+                ))}
               </div>
+
+              {view === "my-jobs" ? (
+                <MyJobs
+                  onConfirmed={(name) =>
+                    setToast(`Confirmed. ${name.split(" ")[0]} will cover this job.`)
+                  }
+                />
+              ) : (
+                <>
+                  <FilterBar filters={filters} setFilters={setFilters} count={filtered.length} />
+                  <div
+                    style={{
+                      flex: 1,
+                      overflowY: "auto",
+                      padding: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                    }}
+                  >
+                    {filtered.map((j) => (
+                      <JobCard
+                        key={j.id}
+                        job={j}
+                        selected={selectedId === j.id}
+                        onSelect={setSelected}
+                        onHover={setHovered}
+                        onAccept={onAccept}
+                      />
+                    ))}
+                    {filtered.length === 0 && (
+                      <div
+                        style={{
+                          padding: 32,
+                          textAlign: "center",
+                          color: "var(--warm-grey)",
+                          fontSize: 13,
+                        }}
+                      >
+                        No jobs match these filters.
+                        <br />
+                        Try widening your fee range or date.
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
         </aside>
