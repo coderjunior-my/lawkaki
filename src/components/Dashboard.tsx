@@ -1226,7 +1226,7 @@ function useIsMobile(bp = 768) {
 /* ============================================================
    Dashboard — main export
    ============================================================ */
-export default function Dashboard({ onSignOut, userName = "" }: { onSignOut?: () => void; userName?: string }) {
+export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: { onSignOut?: () => void; userName?: string; userPhone?: string }) {
   const [filters, setFilters] = useState<Filters>({
     date: "This week",
     docType: "All",
@@ -1252,10 +1252,18 @@ export default function Dashboard({ onSignOut, userName = "" }: { onSignOut?: ()
     [filters]
   );
 
-  const onAccept = (j: Job) =>
-    setToast(
-      `Interest sent. ${j.poster.name} will see your profile in their shortlist and confirm via WhatsApp.`
-    );
+  const onAccept = async (j: Job) => {
+    setToast(`Interest sent. ${j.poster.name.split(" ")[0]} will confirm via WhatsApp.`);
+    try {
+      await fetch("/api/jobs/interest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: j.id, pickerName: userName, pickerPhone: userPhone }),
+      });
+    } catch {
+      // Notification best-effort — toast already shown optimistically
+    }
+  };
   const onPost = () => setToast("Opens the post-a-job sheet.");
 
   return (

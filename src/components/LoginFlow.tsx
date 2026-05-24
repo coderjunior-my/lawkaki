@@ -775,7 +775,7 @@ type Step =
 /* ============================================================
    Main export
    ============================================================ */
-export default function LoginFlow({ onSuccess }: { onSuccess: (token: string, userName: string) => void }) {
+export default function LoginFlow({ onSuccess }: { onSuccess: (token: string, userName: string, phone: string) => void }) {
   const [step, setStep] = useState<Step>({ name: "phone" });
 
   const dotIndex: 0 | 1 | 2 =
@@ -850,7 +850,7 @@ export default function LoginFlow({ onSuccess }: { onSuccess: (token: string, us
         {step.name === "success" && (
           <SuccessStep
             role={step.role}
-            onDone={() => onSuccess(step.appToken, step.userName)}
+            onDone={() => onSuccess(step.appToken, step.userName, step.phone)}
           />
         )}
       </div>

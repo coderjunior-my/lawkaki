@@ -3,6 +3,7 @@ export interface Poster {
   firm: string;
   initials: string;
   rating: number;
+  phone: string;  // WhatsApp-registered MY mobile, E.164
 }
 
 export interface Job {
@@ -39,7 +40,7 @@ export const JOBS: Job[] = [
     fee: 220,
     distance: "3.1 km",
     duration: "45 min",
-    poster: { name: "Adeline Lim", firm: "Lim & Partners", initials: "AL", rating: 4.9 },
+    poster: { name: "Adeline Lim", firm: "Lim & Partners", initials: "AL", rating: 4.9, phone: "+60123456781" },
     note: "Borrower will be there 15 mins early. Witness signature, return originals same day.",
     x: 562,
     y: 318,
@@ -57,7 +58,7 @@ export const JOBS: Job[] = [
     fee: 150,
     distance: "4.1 km",
     duration: "30 min",
-    poster: { name: "Adrian Tan", firm: "Tan & Co.", initials: "AT", rating: 4.9 },
+    poster: { name: "Adrian Tan", firm: "Tan & Co.", initials: "AT", rating: 4.9, phone: "+60173456782" },
     note: "Standard SPA, single purchaser. ~30 mins on the ground.",
     x: 430,
     y: 232,
@@ -75,7 +76,7 @@ export const JOBS: Job[] = [
     fee: 120,
     distance: "6.4 km",
     duration: "25 min",
-    poster: { name: "Priya S.", firm: "PS Law", initials: "PS", rating: 4.8 },
+    poster: { name: "Priya S.", firm: "PS Law", initials: "PS", rating: 4.8, phone: "+60112345678" },
     note: "Discharge documents pre-signed, just need attestation.",
     x: 470,
     y: 460,
@@ -93,7 +94,7 @@ export const JOBS: Job[] = [
     fee: 280,
     distance: "8.2 km",
     duration: "60 min",
-    poster: { name: "Haziq R.", firm: "Haziq Rahman & Co.", initials: "HR", rating: 5.0 },
+    poster: { name: "Haziq R.", firm: "Haziq Rahman & Co.", initials: "HR", rating: 5.0, phone: "+60163456784" },
     note: "Transfer instrument + presentation. Taken by Marcus.",
     takenBy: { name: "Marcus Tan", initials: "MT" },
     x: 250,
@@ -112,7 +113,7 @@ export const JOBS: Job[] = [
     fee: 95,
     distance: "11.0 km",
     duration: "40 min",
-    poster: { name: "Wei Ling", firm: "WL Conveyancing", initials: "WL", rating: 4.7 },
+    poster: { name: "Wei Ling", firm: "WL Conveyancing", initials: "WL", rating: 4.7, phone: "+60193456785" },
     note: "Drop & collect — no signing needed.",
     x: 700,
     y: 520,

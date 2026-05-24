@@ -7,11 +7,13 @@ import LoginFlow from "@/components/LoginFlow";
 export default function Page() {
   const [token, setToken]       = useState<string | null>(null);
   const [userName, setUserName] = useState("");
+  const [userPhone, setUserPhone] = useState("");
   const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
     setToken(localStorage.getItem("lk_token"));
     setUserName(localStorage.getItem("lk_name") ?? "");
+    setUserPhone(localStorage.getItem("lk_phone") ?? "");
     setLoading(false);
   }, []);
 
@@ -21,11 +23,13 @@ export default function Page() {
   if (!token) {
     return (
       <LoginFlow
-        onSuccess={(t, n) => {
+        onSuccess={(t, n, p) => {
           localStorage.setItem("lk_token", t);
           localStorage.setItem("lk_name", n);
+          localStorage.setItem("lk_phone", p);
           setToken(t);
           setUserName(n);
+          setUserPhone(p);
         }}
       />
     );
@@ -34,9 +38,11 @@ export default function Page() {
   function handleSignOut() {
     localStorage.removeItem("lk_token");
     localStorage.removeItem("lk_name");
+    localStorage.removeItem("lk_phone");
     setToken(null);
     setUserName("");
+    setUserPhone("");
   }
 
-  return <Dashboard onSignOut={handleSignOut} userName={userName} />;
+  return <Dashboard onSignOut={handleSignOut} userName={userName} userPhone={userPhone} />;
 }
