@@ -12,12 +12,12 @@ export async function POST(req: NextRequest) {
   if (!phone || !VALID_MY_MOBILE.test(phone)) {
     return NextResponse.json(
       { error: "Enter a valid Malaysian mobile number." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const code = Math.floor(100_000 + Math.random() * 900_000).toString();
-  storeOtp(phone, code);
+  await storeOtp(phone, code);
 
   if (flags.whatsappOtp) {
     await sendOtp(phone, code);

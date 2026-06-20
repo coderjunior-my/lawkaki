@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, CSSProperties } from "react";
+import { useState, useEffect, CSSProperties } from "react";
 import {
-  PICKED_JOBS,
   PickedJob,
   PickedJobStatus,
   StatusFilter,
   PayFilter,
-  TODAY,
+  getTodayISO,
   parseTimeToMins,
   minsToTimeStr,
 } from "@/lib/pickedJobs";
@@ -52,8 +51,9 @@ function estimateTravelMins(from: PickedJob, to: PickedJob): number {
 }
 
 function filterAndSort(jobs: PickedJob[], sf: StatusFilter, pf: PayFilter): PickedJob[] {
+  const todayISO = getTodayISO();
   let result = [...jobs];
-  if      (sf === "today")     result = result.filter((j) => j.dateISO === TODAY);
+  if      (sf === "today")     result = result.filter((j) => j.dateISO === todayISO);
   else if (sf === "awaiting")  result = result.filter((j) => j.status === "awaiting");
   else if (sf === "confirmed") result = result.filter((j) => j.status === "confirmed");
   else if (sf === "completed") result = result.filter((j) => j.status === "completed");
@@ -114,18 +114,18 @@ function PosterDetail({ job }: { job: PickedJob }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div className="lk-avatar" style={{ width: 38, height: 38, fontSize: 13, background: "var(--black)", color: "var(--off-white)", flexShrink: 0 }}>
-            {job.poster.initials}
+            {job.poster?.initials ?? "?"}
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>{job.poster.name}</div>
-            <div style={{ fontSize: 11, color: "var(--warm-grey)", marginTop: 2 }}>{job.poster.firm} · {job.poster.firmState}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>{job.poster?.name ?? "—"}</div>
+            <div style={{ fontSize: 11, color: "var(--warm-grey)", marginTop: 2 }}>{job.poster?.firm} · {job.poster?.firmState}</div>
           </div>
         </div>
       </div>
 
       {/* WhatsApp CTA */}
       <button
-        onClick={() => window.open(`https://wa.me/${job.poster.phone.replace("+", "")}`, "_blank")}
+        onClick={() => job.poster && window.open(`https://wa.me/${job.poster.phone.replace("+", "")}`, "_blank")}
         style={{ width: "100%", height: 40, background: "var(--black)", color: "var(--off-white)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, letterSpacing: "-0.01em" }}
       >
         <Icon d={I.msg} size={15} />
@@ -358,13 +358,33 @@ const PAY_FILTERS: { id: PayFilter; label: string }[] = [
 ];
 
 export default function MyPickedJobs({
+  token = "",
   onFilterChange,
+  onJobsLoaded,
 }: {
+  token?:         string;
   onFilterChange?: (filter: StatusFilter) => void;
+  onJobsLoaded?:  (jobs: PickedJob[]) => void;
 }) {
+  const [allPickedJobs, setAllPickedJobs] = useState<PickedJob[]>([]);
+  const [loading,       setLoading]       = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("today");
   const [payFilter,    setPayFilter]    = useState<PayFilter>("all");
   const [expandedId,   setExpandedId]   = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/jobs/picked", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        const loaded = d.jobs ?? [];
+        setAllPickedJobs(loaded);
+        onJobsLoaded?.(loaded);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleStatusFilter(id: StatusFilter) {
     setStatusFilter(id);
@@ -373,7 +393,7 @@ export default function MyPickedJobs({
     onFilterChange?.(id);
   }
 
-  const jobs = filterAndSort(PICKED_JOBS, statusFilter, payFilter);
+  const jobs = filterAndSort(allPickedJobs, statusFilter, payFilter);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -398,7 +418,13 @@ export default function MyPickedJobs({
       </div>
 
       {/* Body */}
-      {statusFilter === "today" ? (
+      {loading ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ textAlign: "center", color: "var(--warm-grey)", fontSize: 13, padding: 40 }}>
+            Loading…
+          </div>
+        </div>
+      ) : statusFilter === "today" ? (
         jobs.length === 0 ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ textAlign: "center", color: "var(--warm-grey)", fontSize: 13, padding: 40 }}>

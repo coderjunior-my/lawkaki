@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, CSSProperties } from "react";
-import { JOBS, Job } from "@/lib/jobs";
-import { INTERESTS, Interest, PickerProfile } from "@/lib/interests";
+import { useState, useEffect, CSSProperties } from "react";
+import { Job } from "@/lib/jobs";
+import { Interest, PickerProfile } from "@/lib/interests";
+
+interface JobWithInterests extends Job {
+  interests: Interest[];
+}
 
 /* ============================================================
    Icons
@@ -415,19 +419,26 @@ function PostedJobCard({
    MyJobs — main export
    ============================================================ */
 export default function MyJobs({
+  token = "",
   onConfirmed,
 }: {
+  token?:      string;
   onConfirmed: (pickerName: string) => void;
 }) {
+  const [jobs, setJobs]                 = useState<JobWithInterests[]>([]);
+  const [loading, setLoading]           = useState(true);
   const [expandedId, setExpandedId]     = useState<string | null>(null);
   const [modalData, setModalData]       = useState<{ picker: PickerProfile; jobId: string } | null>(null);
   const [confirmedJobs, setConfirmedJobs] = useState<Set<string>>(new Set());
 
-  // Group interests by jobId
-  const byJob = INTERESTS.reduce<Record<string, Interest[]>>((acc, i) => {
-    (acc[i.jobId] ??= []).push(i);
-    return acc;
-  }, {});
+  useEffect(() => {
+    fetch("/api/jobs/posted", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => r.json())
+      .then((d) => { setJobs(d.jobs ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [token]);
 
   function toggle(jobId: string) {
     setExpandedId((prev) => (prev === jobId ? null : jobId));
@@ -438,8 +449,8 @@ export default function MyJobs({
     onConfirmed(pickerName);
   }
 
-  const openCount  = JOBS.filter((j) => j.state !== "taken" && !confirmedJobs.has(j.id)).length;
-  const takenCount = JOBS.filter((j) => j.state === "taken"  ||  confirmedJobs.has(j.id)).length;
+  const openCount  = jobs.filter((j) => j.state !== "taken" && !confirmedJobs.has(j.id)).length;
+  const takenCount = jobs.filter((j) => j.state === "taken"  ||  confirmedJobs.has(j.id)).length;
 
   return (
     <>
@@ -471,11 +482,21 @@ export default function MyJobs({
           gap: 6,
         }}
       >
-        {JOBS.map((job) => (
+        {loading && (
+          <div style={{ padding: 32, textAlign: "center", color: "#6B7280", fontSize: 13 }}>
+            Loading…
+          </div>
+        )}
+        {!loading && jobs.length === 0 && (
+          <div style={{ padding: 32, textAlign: "center", color: "#6B7280", fontSize: 13 }}>
+            No posted jobs yet.
+          </div>
+        )}
+        {jobs.map((job) => (
           <PostedJobCard
             key={job.id}
             job={confirmedJobs.has(job.id) ? { ...job, state: "taken" } : job}
-            interests={byJob[job.id] ?? []}
+            interests={job.interests}
             expanded={expandedId === job.id}
             onToggle={() => toggle(job.id)}
             onViewProfile={(picker, jobId) => setModalData({ picker, jobId })}
