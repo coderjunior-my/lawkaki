@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useMemo, useEffect, CSSProperties } from "react";
-import { JOBS, Job } from "@/lib/jobs";
+import { Job } from "@/lib/jobs";
 import MyJobs from "@/components/MyJobs";
 import MyPickedJobs from "@/components/MyPickedJobs";
-import { PickedJob, StatusFilter, getTodayPickedJobs } from "@/lib/pickedJobs";
+import ReminderPopup from "@/components/ReminderPopup";
+import { PickedJob, StatusFilter, getTodayISO, parseTimeToMins } from "@/lib/pickedJobs";
+import TaskTracker from "@/components/TaskTracker";
+import Settings from "@/components/Settings";
 
 /* ============================================================
    Icon — inline Lucide-style SVGs
@@ -67,6 +70,10 @@ const I = {
     "M2 12h4",
     "M18 12h4",
     "M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z",
+  ],
+  gear: [
+    "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+    "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z",
   ],
 };
 
@@ -135,11 +142,13 @@ function TopNav({
   logoSize = 38,
   isMobile = false,
   onSignOut,
+  onSettings,
   userName = "",
 }: {
   logoSize?: number;
   isMobile?: boolean;
   onSignOut?: () => void;
+  onSettings?: () => void;
   userName?: string;
 }) {
   const navH = Math.max(60, logoSize + 28);
@@ -221,6 +230,11 @@ function TopNav({
           {getInitials(userName)}
         </div>
       )}
+
+      {/* Settings */}
+      <button onClick={onSettings} style={iconBtnStyle} aria-label="Settings">
+        <Icon d={I.gear} size={18} />
+      </button>
 
       {/* Sign out */}
       <button
@@ -1318,25 +1332,75 @@ function TodayRouteMap({ jobs, style }: { jobs: PickedJob[]; style?: CSSProperti
 /* ============================================================
    Dashboard — main export
    ============================================================ */
-export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: { onSignOut?: () => void; userName?: string; userPhone?: string }) {
+export default function Dashboard({
+  onSignOut,
+  token     = "",
+  userId    = "",
+  userName  = "",
+  userPhone = "",
+}: {
+  onSignOut?: () => void;
+  token?:     string;
+  userId?:    string;
+  userName?:  string;
+  userPhone?: string;
+}) {
   const [filters, setFilters] = useState<Filters>({
     date: "This week",
     docType: "All",
     minFee: 50,
   });
-  const [view, setView] = useState<"browse" | "my-jobs" | "picked">("browse");
+  const [view, setView]               = useState<"browse" | "my-jobs" | "picked" | "tasks">("browse");
+  const [showSettings, setShowSettings] = useState(false);
+  const [displayName, setDisplayName]   = useState(userName);
   const [pickedFilter, setPickedFilter] = useState<StatusFilter>("today");
-  const showTodayMap   = view === "picked" && pickedFilter === "today";
-  const todayPickedJobs = showTodayMap ? getTodayPickedJobs() : [];
-  const [selectedId, setSelected] = useState<string | null>("lk-2026-0418");
+  const [allJobs, setAllJobs]           = useState<Job[]>([]);
+  const [pickedJobs, setPickedJobs]     = useState<PickedJob[]>([]);
+
+  // Fetch browse + picked jobs once on mount
+  useEffect(() => {
+    fetch("/api/jobs", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+      .then((r) => r.json())
+      .then((d) => setAllJobs(d.jobs ?? []))
+      .catch(() => {});
+
+    if (token) {
+      fetch("/api/jobs/picked", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((d) => setPickedJobs(d.jobs ?? []))
+        .catch(() => {});
+    }
+  }, [token]);
+
+  const showTodayMap = view === "picked" && pickedFilter === "today";
+  const todayISO     = getTodayISO();
+  const todayPickedJobs = showTodayMap
+    ? pickedJobs
+        .filter((j) => j.dateISO === todayISO && j.status !== "awaiting")
+        .sort((a, b) => parseTimeToMins(a.time) - parseTimeToMins(b.time))
+    : [];
+
+  const [selectedId, setSelected] = useState<string | null>(null);
   const [hoveredId, setHovered] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const [showReminder, setShowReminder] = useState(false);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (!sessionStorage.getItem("lk_reminder_seen")) {
+      setShowReminder(true);
+    }
+  }, []);
+
+  function dismissReminder() {
+    sessionStorage.setItem("lk_reminder_seen", "1");
+    setShowReminder(false);
+  }
 
   const filtered = useMemo(
     () =>
-      JOBS.filter((j) => {
+      allJobs.filter((j) => {
         if (
           filters.docType !== "All" &&
           !j.docType.toLowerCase().includes(filters.docType.toLowerCase().split(" ")[0])
@@ -1345,11 +1409,11 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
         if (j.fee < filters.minFee) return false;
         return true;
       }),
-    [filters]
+    [allJobs, filters]
   );
 
   const onAccept = async (j: Job) => {
-    setToast(`Interest sent. ${j.poster.name.split(" ")[0]} will confirm via WhatsApp.`);
+    setToast(`Interest sent. ${j.poster?.name.split(" ")[0] ?? "Poster"} will confirm via WhatsApp.`);
     try {
       await fetch("/api/jobs/interest", {
         method: "POST",
@@ -1371,18 +1435,24 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
         background: "var(--off-white)",
       }}
     >
-      <TopNav isMobile={isMobile} onSignOut={onSignOut} userName={userName} />
+      <TopNav
+        isMobile={isMobile}
+        onSignOut={onSignOut}
+        onSettings={() => setShowSettings(true)}
+        userName={displayName}
+      />
 
       <main style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
         {/* Left panel */}
         <aside
           style={{
             width: isMobile ? "100%"
+              : showSettings || view === "tasks" ? "100%"
               : view === "picked" ? (showTodayMap ? 380 : "100%")
               : (panelOpen ? 380 : 0),
             flexShrink: 0,
             background: "var(--off-white)",
-            borderRight: (isMobile || (view === "picked" && !showTodayMap)) ? "none" : "1px solid var(--hair)",
+            borderRight: (isMobile || showSettings || view === "tasks" || (view === "picked" && !showTodayMap)) ? "none" : "1px solid var(--hair)",
             borderTop: isMobile ? "1px solid var(--hair)" : "none",
             display: "flex",
             flexDirection: "column",
@@ -1393,101 +1463,128 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
             minHeight: isMobile ? 0 : undefined,
           }}
         >
-          {(isMobile || panelOpen) && (
+          {(isMobile || panelOpen || showSettings || view === "tasks") && (
             <>
-              {/* Tab bar */}
-              <div
-                style={{
-                  display: "flex",
-                  background: "#FFFFFF",
-                  borderBottom: "1px solid var(--hair)",
-                  flexShrink: 0,
-                }}
-              >
-                {(
-                  [
-                    { id: "browse",  label: "Browse"  },
-                    { id: "my-jobs", label: "Posted"  },
-                    { id: "picked",  label: "Picked"  },
-                  ] as { id: typeof view; label: string }[]
-                ).map(({ id, label }) => (
-                  <button
-                    key={id}
-                    onClick={() => setView(id)}
-                    style={{
-                      flex: 1,
-                      height: 44,
-                      background: "transparent",
-                      border: "none",
-                      borderBottom: `2px solid ${view === id ? "var(--black)" : "transparent"}`,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      fontSize: 13,
-                      fontWeight: view === id ? 700 : 500,
-                      color: view === id ? "var(--black)" : "var(--warm-grey)",
-                      letterSpacing: "-0.01em",
-                      transition: "color 140ms, border-color 140ms",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {view === "my-jobs" ? (
-                <MyJobs
-                  onConfirmed={(name) =>
-                    setToast(`Confirmed. ${name.split(" ")[0]} will cover this job.`)
-                  }
+              {showSettings ? (
+                <Settings
+                  userName={displayName}
+                  userPhone={userPhone}
+                  onSignOut={onSignOut}
+                  onClose={() => setShowSettings(false)}
+                  onNameChange={(n) => {
+                    setDisplayName(n);
+                    localStorage.setItem("lk_name", n);
+                  }}
                 />
-              ) : view === "picked" ? (
-                <MyPickedJobs onFilterChange={setPickedFilter} />
               ) : (
                 <>
-                  <FilterBar filters={filters} setFilters={setFilters} count={filtered.length} />
+                  {/* Tab bar */}
                   <div
                     style={{
-                      flex: 1,
-                      overflowY: "auto",
-                      padding: 10,
                       display: "flex",
-                      flexDirection: "column",
-                      gap: 6,
+                      background: "#FFFFFF",
+                      borderBottom: "1px solid var(--hair)",
+                      flexShrink: 0,
                     }}
                   >
-                    {filtered.map((j) => (
-                      <JobCard
-                        key={j.id}
-                        job={j}
-                        selected={selectedId === j.id}
-                        onSelect={setSelected}
-                        onHover={setHovered}
-                        onAccept={onAccept}
-                      />
-                    ))}
-                    {filtered.length === 0 && (
-                      <div
+                    {(
+                      [
+                        { id: "browse",  label: "Browse"  },
+                        { id: "my-jobs", label: "Posted"  },
+                        { id: "picked",  label: "Picked"  },
+                        { id: "tasks",   label: "Tasks"   },
+                      ] as { id: typeof view; label: string }[]
+                    ).map(({ id, label }) => (
+                      <button
+                        key={id}
+                        onClick={() => setView(id)}
                         style={{
-                          padding: 32,
-                          textAlign: "center",
-                          color: "var(--warm-grey)",
-                          fontSize: 13,
+                          flex: 1,
+                          height: 44,
+                          background: "transparent",
+                          border: "none",
+                          borderBottom: `2px solid ${view === id ? "var(--black)" : "transparent"}`,
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          fontSize: 12,
+                          fontWeight: view === id ? 700 : 500,
+                          color: view === id ? "var(--black)" : "var(--warm-grey)",
+                          letterSpacing: "-0.01em",
+                          transition: "color 140ms, border-color 140ms",
                         }}
                       >
-                        No jobs match these filters.
-                        <br />
-                        Try widening your fee range or date.
-                      </div>
-                    )}
+                        {label}
+                      </button>
+                    ))}
                   </div>
+
+                  {view === "tasks" ? (
+                    <TaskTracker
+                      token={token}
+                      pickedJobs={pickedJobs}
+                      onNavigate={(v) => setView(v)}
+                    />
+                  ) : view === "my-jobs" ? (
+                    <MyJobs
+                      token={token}
+                      onConfirmed={(name) =>
+                        setToast(`Confirmed. ${name.split(" ")[0]} will cover this job.`)
+                      }
+                    />
+                  ) : view === "picked" ? (
+                    <MyPickedJobs
+                      token={token}
+                      onFilterChange={setPickedFilter}
+                      onJobsLoaded={setPickedJobs}
+                    />
+                  ) : (
+                    <>
+                      <FilterBar filters={filters} setFilters={setFilters} count={filtered.length} />
+                      <div
+                        style={{
+                          flex: 1,
+                          overflowY: "auto",
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                        }}
+                      >
+                        {filtered.map((j) => (
+                          <JobCard
+                            key={j.id}
+                            job={j}
+                            selected={selectedId === j.id}
+                            onSelect={setSelected}
+                            onHover={setHovered}
+                            onAccept={onAccept}
+                          />
+                        ))}
+                        {filtered.length === 0 && (
+                          <div
+                            style={{
+                              padding: 32,
+                              textAlign: "center",
+                              color: "var(--warm-grey)",
+                              fontSize: 13,
+                            }}
+                          >
+                            No jobs match these filters.
+                            <br />
+                            Try widening your fee range or date.
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </>
           )}
         </aside>
 
-        {/* Collapse handle — desktop only, hidden when showing picked jobs */}
-        {!isMobile && view !== "picked" && (
+        {/* Collapse handle — desktop only */}
+        {!isMobile && !showSettings && view !== "picked" && view !== "tasks" && (
           <button
             onClick={() => setPanelOpen(!panelOpen)}
             aria-label={panelOpen ? "Collapse panel" : "Expand panel"}
@@ -1508,27 +1605,40 @@ export default function Dashboard({ onSignOut, userName = "", userPhone = "" }: 
           </button>
         )}
 
-        {/* Map area — browse/posted: full map · picked+today: route map · picked+other: hidden */}
-        {showTodayMap ? (
-          <TodayRouteMap
-            jobs={todayPickedJobs}
-            style={isMobile ? { order: 0, flex: "0 0 42vh" } : undefined}
-          />
-        ) : view !== "picked" ? (
-          <MapArea
-            jobs={filtered}
-            selectedId={selectedId}
-            hoveredId={hoveredId}
-            setSelected={setSelected}
-            setHovered={setHovered}
-            onAccept={onAccept}
-            onPost={onPost}
-            style={isMobile ? { order: 0, flex: "0 0 50vh" } : undefined}
-          />
-        ) : null}
+        {/* Map area — hidden when settings or tasks; route map for picked+today; browse map otherwise */}
+        {!showSettings && view !== "tasks" && (
+          showTodayMap ? (
+            <TodayRouteMap
+              jobs={todayPickedJobs}
+              style={isMobile ? { order: 0, flex: "0 0 42vh" } : undefined}
+            />
+          ) : view !== "picked" ? (
+            <MapArea
+              jobs={filtered}
+              selectedId={selectedId}
+              hoveredId={hoveredId}
+              setSelected={setSelected}
+              setHovered={setHovered}
+              onAccept={onAccept}
+              onPost={onPost}
+              style={isMobile ? { order: 0, flex: "0 0 50vh" } : undefined}
+            />
+          ) : null
+        )}
       </main>
 
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
+
+      {showReminder && (
+        <ReminderPopup
+          onDismiss={dismissReminder}
+          onNavigate={(v) => {
+            setView(v);
+            dismissReminder();
+          }}
+          pickedJobs={pickedJobs}
+        />
+      )}
     </div>
   );
 }

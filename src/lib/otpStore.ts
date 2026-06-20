@@ -1,56 +1,75 @@
-// In-memory OTP + session store for Phase 1 pilot.
-// Replace with DB-backed calls (schema.sql: otp_tokens, sessions) before production.
+import { supabase } from "@/lib/supabase";
 
-interface OtpEntry {
-  code: string;
-  expiresAt: number;  // ms timestamp
-  attempts: number;
+const OTP_TTL_MS             = 5  * 60 * 1_000;
+const MAX_OTP_ATTEMPTS       = 3;
+const PENDING_SESSION_TTL_MS = 10 * 60 * 1_000;
+
+export async function storeOtp(phone: string, code: string): Promise<void> {
+  // Delete stale OTPs for this phone before inserting a fresh one
+  await supabase.from("otp_tokens").delete().eq("phone", phone);
+  await supabase.from("otp_tokens").insert({
+    phone,
+    code,
+    expires_at: new Date(Date.now() + OTP_TTL_MS).toISOString(),
+  });
 }
 
-interface PendingSession {
-  phone: string;
-  createdAt: number;  // ms timestamp
-}
+export async function verifyOtp(
+  phone: string,
+  code: string,
+): Promise<"ok" | "expired" | "wrong" | "locked"> {
+  const { data } = await supabase
+    .from("otp_tokens")
+    .select("id, code, expires_at, attempts")
+    .eq("phone", phone)
+    .eq("used", false)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
 
-const otpStore      = new Map<string, OtpEntry>();
-const sessionStore  = new Map<string, PendingSession>();
+  if (!data) return "expired";
 
-// OTP is valid for 5 minutes; locked after 3 wrong attempts.
-const OTP_TTL_MS      = 5 * 60 * 1000;
-const MAX_OTP_ATTEMPTS = 3;
+  if (new Date(data.expires_at) < new Date()) {
+    await supabase.from("otp_tokens").delete().eq("id", data.id);
+    return "expired";
+  }
 
-// The pending session (between OTP verify and registration) is valid for 10 minutes.
-const PENDING_SESSION_TTL_MS = 10 * 60 * 1000;
+  if (data.attempts >= MAX_OTP_ATTEMPTS) return "locked";
 
-export function storeOtp(phone: string, code: string): void {
-  otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
-}
+  if (data.code !== code) {
+    await supabase
+      .from("otp_tokens")
+      .update({ attempts: data.attempts + 1 })
+      .eq("id", data.id);
+    return "wrong";
+  }
 
-export function verifyOtp(phone: string, code: string): "ok" | "expired" | "wrong" | "locked" {
-  const entry = otpStore.get(phone);
-  if (!entry) return "expired";
-  if (Date.now() > entry.expiresAt) { otpStore.delete(phone); return "expired"; }
-  if (entry.attempts >= MAX_OTP_ATTEMPTS) return "locked";
-  if (entry.code !== code) { entry.attempts++; return "wrong"; }
-  otpStore.delete(phone);
+  await supabase.from("otp_tokens").update({ used: true }).eq("id", data.id);
   return "ok";
 }
 
-// Creates a short-lived token that gates the /register endpoint.
-export function createPendingSession(phone: string): string {
+export async function createPendingSession(phone: string): Promise<string> {
   const token = crypto.randomUUID();
-  sessionStore.set(token, { phone, createdAt: Date.now() });
+  await supabase.from("pending_sessions").insert({
+    token,
+    phone,
+    expires_at: new Date(Date.now() + PENDING_SESSION_TTL_MS).toISOString(),
+  });
   return token;
 }
 
-// Validates and consumes the pending session (one-time use).
-export function consumePendingSession(token: string): string | null {
-  const entry = sessionStore.get(token);
-  if (!entry) return null;
-  if (Date.now() - entry.createdAt > PENDING_SESSION_TTL_MS) {
-    sessionStore.delete(token);
-    return null;
-  }
-  sessionStore.delete(token);
-  return entry.phone;
+export async function consumePendingSession(token: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("pending_sessions")
+    .select("phone, expires_at")
+    .eq("token", token)
+    .single();
+
+  if (!data) return null;
+
+  await supabase.from("pending_sessions").delete().eq("token", token);
+
+  if (new Date(data.expires_at) < new Date()) return null;
+
+  return data.phone as string;
 }

@@ -1,40 +1,26 @@
 -- =============================================================================
 -- Law Kaki — PostgreSQL Schema (Phase 1 Pilot)
--- Run against PostgreSQL 14+ with the pgcrypto extension enabled.
+-- Run in Supabase SQL editor (Project → SQL Editor → New query).
 -- =============================================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- =============================================================================
--- law_firms
--- Master list of approved law firms. Admin-managed for Phase 1.
--- =============================================================================
-CREATE TABLE law_firms (
-  id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  name       VARCHAR(300) NOT NULL,
-  slug       VARCHAR(300) NOT NULL UNIQUE,          -- url-safe: "skrine", "zaid-ibrahim-co"
-  state      VARCHAR(50)  NOT NULL
-               CHECK (state IN ('Kuala Lumpur', 'Selangor')),
-  active     BOOLEAN      NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX law_firms_name_idx  ON law_firms (name);
-CREATE INDEX law_firms_state_idx ON law_firms (state);
-
--- =============================================================================
 -- users
--- One record per lawyer on the platform.
--- Phone is the canonical identity; name/email filled in later.
+-- One record per lawyer. Phone is canonical identity.
+-- Phase 1: firm stored as name/state text; no FK to law_firms table.
+-- Phase 2: add FK once law_firms is seeded and verified via Bar Council.
 -- =============================================================================
 CREATE TABLE users (
   id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone        VARCHAR(20)  NOT NULL UNIQUE,      -- E.164: +601XXXXXXXXX
+  phone        VARCHAR(20)  NOT NULL UNIQUE,
   name         VARCHAR(200),
   email        VARCHAR(200),
   role         VARCHAR(10)  NOT NULL DEFAULT 'both'
                  CHECK (role IN ('poster', 'picker', 'both')),
-  firm_id      UUID         REFERENCES law_firms (id),
+  firm_name    VARCHAR(300),
+  firm_state   VARCHAR(50)
+                 CHECK (firm_state IN ('Kuala Lumpur', 'Selangor')),
   verified     BOOLEAN      NOT NULL DEFAULT FALSE,
   verified_at  TIMESTAMPTZ,
   onboarded    BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -46,7 +32,6 @@ CREATE TABLE users (
 );
 
 CREATE INDEX users_phone_idx   ON users (phone);
-CREATE INDEX users_firm_id_idx ON users (firm_id);
 CREATE INDEX users_status_idx  ON users (status);
 
 CREATE OR REPLACE FUNCTION touch_updated_at()
@@ -60,16 +45,15 @@ CREATE TRIGGER users_updated_at
 
 -- =============================================================================
 -- otp_tokens
--- Short-lived 6-digit codes sent via WhatsApp OTP.
--- Sweep expired rows periodically (cron or pg_cron).
+-- Short-lived 6-digit codes sent via WhatsApp.
 -- =============================================================================
 CREATE TABLE otp_tokens (
   id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   phone      VARCHAR(20) NOT NULL,
   code       VARCHAR(6)  NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,        -- 5 minutes from creation
+  expires_at TIMESTAMPTZ NOT NULL,
   used       BOOLEAN     NOT NULL DEFAULT FALSE,
-  attempts   INT         NOT NULL DEFAULT 0,    -- lock out after 3 failed attempts
+  attempts   INT         NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -77,14 +61,27 @@ CREATE INDEX otp_tokens_phone_idx      ON otp_tokens (phone);
 CREATE INDEX otp_tokens_expires_at_idx ON otp_tokens (expires_at);
 
 -- =============================================================================
+-- pending_sessions
+-- Short-lived token bridging OTP verification and registration (10 min).
+-- =============================================================================
+CREATE TABLE pending_sessions (
+  token      VARCHAR(128) PRIMARY KEY,
+  phone      VARCHAR(20)  NOT NULL,
+  expires_at TIMESTAMPTZ  NOT NULL,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX pending_sessions_expires_at_idx ON pending_sessions (expires_at);
+
+-- =============================================================================
 -- sessions
--- Persistent app sessions after registration is complete.
+-- Persistent app sessions (30 days).
 -- =============================================================================
 CREATE TABLE sessions (
   id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    UUID         NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   token      VARCHAR(128) NOT NULL UNIQUE,
-  expires_at TIMESTAMPTZ  NOT NULL,        -- 30 days
+  expires_at TIMESTAMPTZ  NOT NULL,
   created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
@@ -92,24 +89,10 @@ CREATE INDEX sessions_token_idx   ON sessions (token);
 CREATE INDEX sessions_user_id_idx ON sessions (user_id);
 
 -- =============================================================================
--- admin_approvals  (Phase 1)
--- Admin pre-approves phone numbers before they can self-register.
--- Phase 2: replace with Malaysian Bar Council roll number verification.
--- =============================================================================
-CREATE TABLE admin_approvals (
-  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone         VARCHAR(20) NOT NULL UNIQUE,
-  firm_id       UUID        REFERENCES law_firms (id),
-  approved_by   UUID        REFERENCES users (id),
-  approved_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  notes         TEXT
-);
-
-CREATE INDEX admin_approvals_phone_idx ON admin_approvals (phone);
-
--- =============================================================================
 -- jobs
--- A conveyancing appointment posted by a Poster for delegation.
+-- A conveyancing appointment posted for delegation.
+-- map_x / map_y: SVG coordinates for the Phase 1 mock map (replace with
+-- lat/lng in Phase 2 when using real Google Maps).
 -- =============================================================================
 CREATE TYPE job_state AS ENUM ('open', 'urgent', 'taken', 'completed', 'cancelled');
 CREATE TYPE doc_type  AS ENUM (
@@ -122,24 +105,29 @@ CREATE TYPE doc_type  AS ENUM (
 );
 
 CREATE TABLE jobs (
-  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  state           job_state   NOT NULL DEFAULT 'open',
-  doc_type        doc_type    NOT NULL,
-  venue           VARCHAR(300) NOT NULL,           -- e.g. "Public Bank · KLCC"
-  address         VARCHAR(500) NOT NULL,           -- full Malaysian address
-  area            VARCHAR(100),                    -- neighbourhood label: "Mont Kiara"
-  appointment_at  TIMESTAMPTZ NOT NULL,
-  fee_indicative  INT         NOT NULL CHECK (fee_indicative >= 0),  -- RM, whole number
+  id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  state           job_state    NOT NULL DEFAULT 'open',
+  doc_type        doc_type     NOT NULL,
+  venue           VARCHAR(300) NOT NULL,
+  address         VARCHAR(500) NOT NULL,
+  area            VARCHAR(100),
+  appointment_at  TIMESTAMPTZ  NOT NULL,
+  fee_indicative  INT          NOT NULL CHECK (fee_indicative >= 0),
   notes           TEXT,
-  poster_id       UUID        NOT NULL REFERENCES users (id),
-  picker_id       UUID        REFERENCES users (id),
+  poster_id       UUID         NOT NULL REFERENCES users (id),
+  picker_id       UUID         REFERENCES users (id),
   picked_at       TIMESTAMPTZ,
   completed_at    TIMESTAMPTZ,
   cancelled_at    TIMESTAMPTZ,
+  payment_status  VARCHAR(10)  CHECK (payment_status IN ('paid', 'unpaid')),
   lat             DECIMAL(9,6),
   lng             DECIMAL(9,6),
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  map_x           SMALLINT,
+  map_y           SMALLINT,
+  distance_text   VARCHAR(30),
+  duration_text   VARCHAR(30),
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX jobs_state_idx          ON jobs (state);
@@ -152,14 +140,28 @@ CREATE TRIGGER jobs_updated_at
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- =============================================================================
+-- job_interests
+-- Picker expresses interest in a job before the poster confirms them.
+-- =============================================================================
+CREATE TABLE job_interests (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id       UUID        NOT NULL REFERENCES jobs (id) ON DELETE CASCADE,
+  picker_id    UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  expressed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (job_id, picker_id)
+);
+
+CREATE INDEX job_interests_job_id_idx    ON job_interests (job_id);
+CREATE INDEX job_interests_picker_id_idx ON job_interests (picker_id);
+
+-- =============================================================================
 -- ratings
 -- Poster rates Picker after job is marked Complete.
--- Three dimensions: punctuality, professionalism, completeness.
--- Cold-start protection: score displayed only after 3+ completed jobs.
+-- Cold-start: score shown only after 3+ completed jobs.
 -- =============================================================================
 CREATE TABLE ratings (
   id              UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
-  job_id          UUID     NOT NULL UNIQUE REFERENCES jobs (id),  -- one rating per job
+  job_id          UUID     NOT NULL UNIQUE REFERENCES jobs (id),
   poster_id       UUID     NOT NULL REFERENCES users (id),
   picker_id       UUID     NOT NULL REFERENCES users (id),
   punctuality     SMALLINT NOT NULL CHECK (punctuality     BETWEEN 1 AND 5),
@@ -172,7 +174,8 @@ CREATE TABLE ratings (
 CREATE INDEX ratings_picker_id_idx ON ratings (picker_id);
 CREATE INDEX ratings_poster_id_idx ON ratings (poster_id);
 
--- Aggregate view consumed by the profile and job-card UIs
+-- Aggregate view — consumed by profile and interest list UIs.
+-- Cold-start: only expose when total_jobs >= 3 (enforced in app layer).
 CREATE VIEW picker_ratings AS
 SELECT
   picker_id,

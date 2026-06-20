@@ -309,13 +309,17 @@ function PhoneStep({ onNext }: { onNext: (phone: string) => void }) {
 const OTP_LEN      = 6;
 const RESEND_SECS  = 60;
 
+type OtpResult =
+  | { existing: true;  token: string; userId: string; name: string }
+  | { existing: false; sessionToken: string };
+
 function OtpStep({
   phone,
   onNext,
   onBack,
 }: {
   phone: string;
-  onNext: (sessionToken: string) => void;
+  onNext: (result: OtpResult) => void;
   onBack: () => void;
 }) {
   const [digits, setDigits]     = useState<string[]>(Array(OTP_LEN).fill(""));
@@ -378,7 +382,11 @@ function OtpStep({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "That code didn't work.");
-      onNext(data.sessionToken);
+      onNext(
+        data.existing
+          ? { existing: true,  token: data.token, userId: data.userId, name: data.name }
+          : { existing: false, sessionToken: data.sessionToken }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "That code didn't work. Try again.");
       setDigits(Array(OTP_LEN).fill(""));
@@ -505,7 +513,7 @@ function ProfileStep({
   onNext,
 }: {
   sessionToken: string;
-  onNext: (role: UserRole, appToken: string, userName: string) => void;
+  onNext: (role: UserRole, appToken: string, userId: string, userName: string) => void;
 }) {
   const [name, setName]             = useState("");
   const [query, setQuery]           = useState("");
@@ -534,7 +542,7 @@ function ProfileStep({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
-      onNext(role, data.token, name.trim());
+      onNext(role, data.token, data.userId, name.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     } finally {
@@ -770,12 +778,12 @@ type Step =
   | { name: "phone" }
   | { name: "otp";     phone: string }
   | { name: "profile"; phone: string; sessionToken: string }
-  | { name: "success"; phone: string; role: UserRole; appToken: string; userName: string };
+  | { name: "success"; phone: string; role: UserRole; appToken: string; userId: string; userName: string };
 
 /* ============================================================
    Main export
    ============================================================ */
-export default function LoginFlow({ onSuccess }: { onSuccess: (token: string, userName: string, phone: string) => void }) {
+export default function LoginFlow({ onSuccess }: { onSuccess: (token: string, userId: string, userName: string, phone: string) => void }) {
   const [step, setStep] = useState<Step>({ name: "phone" });
 
   const dotIndex: 0 | 1 | 2 =
@@ -831,9 +839,13 @@ export default function LoginFlow({ onSuccess }: { onSuccess: (token: string, us
         {step.name === "otp" && (
           <OtpStep
             phone={step.phone}
-            onNext={(sessionToken) =>
-              setStep({ name: "profile", phone: step.phone, sessionToken })
-            }
+            onNext={(result) => {
+              if (result.existing) {
+                onSuccess(result.token, result.userId, result.name, step.phone);
+              } else {
+                setStep({ name: "profile", phone: step.phone, sessionToken: result.sessionToken });
+              }
+            }}
             onBack={() => setStep({ name: "phone" })}
           />
         )}
@@ -841,8 +853,8 @@ export default function LoginFlow({ onSuccess }: { onSuccess: (token: string, us
         {step.name === "profile" && (
           <ProfileStep
             sessionToken={step.sessionToken}
-            onNext={(role, appToken, userName) =>
-              setStep({ name: "success", phone: step.phone, role, appToken, userName })
+            onNext={(role, appToken, userId, userName) =>
+              setStep({ name: "success", phone: step.phone, role, appToken, userId, userName })
             }
           />
         )}
@@ -850,7 +862,7 @@ export default function LoginFlow({ onSuccess }: { onSuccess: (token: string, us
         {step.name === "success" && (
           <SuccessStep
             role={step.role}
-            onDone={() => onSuccess(step.appToken, step.userName, step.phone)}
+            onDone={() => onSuccess(step.appToken, step.userId, step.userName, step.phone)}
           />
         )}
       </div>
