@@ -1,12 +1,27 @@
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl      = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 // Server-side only — service role bypasses RLS.
 // Never import this file in client components.
-export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: { persistSession: false },
+// Lazy singleton so missing env vars at build time don't crash the module.
+let _client: SupabaseClient | null = null;
+
+function getClient(): SupabaseClient {
+  if (_client) return _client;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "Missing Supabase env vars: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set."
+    );
+  }
+  _client = createClient(url, key, { auth: { persistSession: false } });
+  return _client;
+}
+
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getClient() as unknown as Record<string | symbol, unknown>)[prop];
+  },
 });
 
 export async function getUserIdFromToken(token: string): Promise<string | null> {
