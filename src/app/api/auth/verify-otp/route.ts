@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyOtp, createPendingSession } from "@/lib/otpStore";
 import { findUserByPhone } from "@/lib/mockUsers";
 import { supabase } from "@/lib/supabase";
+import { flags } from "@/lib/featureFlags";
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000; // 30 days
 
@@ -19,8 +20,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Phone and code are required." }, { status: 400 });
   }
 
-  // TODO: remove bypass before production
-  const result = code === "123456" ? "ok" : await verifyOtp(phone, code);
+  const result =
+    flags.mockOtp && code === "123456" ? "ok" : await verifyOtp(phone, code);
 
   if (result !== "ok") {
     return NextResponse.json({ error: OTP_ERROR[result] }, { status: 400 });

@@ -16,6 +16,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (flags.mockOtp) {
+    return NextResponse.json({ ok: true });
+  }
+
   const code = Math.floor(100_000 + Math.random() * 900_000).toString();
   await storeOtp(phone, code);
 

@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   if (flags.whatsappNotifications && poster) {
     const appt = new Date(job.appointment_at);
-    await notifyPosterOfInterest({
+    notifyPosterOfInterest({
       posterPhone:     poster.phone,
       posterFirstName: poster.name.split(" ")[0],
       pickerName,
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       docType:  job.doc_type,
       date:     appt.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kuala_Lumpur" }),
       time:     appt.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kuala_Lumpur" }),
-    });
+    }).catch((err) => console.error("[WhatsApp] interest notify failed:", err));
   } else {
     console.log(`[Interest] ${pickerName} (${pickerPhone}) → job ${jobId}`);
   }
