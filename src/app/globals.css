@@ -330,6 +330,13 @@ input[type=range]::-moz-range-thumb {
 }
 
 /* ============================================================
+   Info rows — stacked list with shared borders + rounded caps
+   ============================================================ */
+
+.info-row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.info-row:last-child  { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: 1px solid var(--hair); }
+
+/* ============================================================
    Scrollbar
    ============================================================ */
 
@@ -338,6 +345,29 @@ aside::-webkit-scrollbar-thumb, .lk-scroll::-webkit-scrollbar-thumb {
   background: var(--hair);
   border-radius: 999px;
   border: 2px solid var(--off-white);
+}
+
+/* ============================================================
+   Auth — phone input focus-within highlight
+   ============================================================ */
+
+.phone-wrap:focus-within {
+  border-color: var(--black) !important;
+  box-shadow: 0 0 0 4px rgba(13,13,13,0.06);
+}
+
+/* Auth — spinner for OTP verify state */
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+
+.auth-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--hair);
+  border-top-color: var(--black);
+  border-radius: 999px;
+  animation: auth-spin 600ms linear infinite;
+  flex-shrink: 0;
 }
 
 /* ============================================================
