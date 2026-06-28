@@ -1,5 +1,23 @@
 // Law Kaki — shared TypeScript types (mirrors schema.sql)
 
+export type MalaysianState =
+  | "Johor"
+  | "Kedah"
+  | "Kelantan"
+  | "Kuala Lumpur"
+  | "Labuan"
+  | "Melaka"
+  | "Negeri Sembilan"
+  | "Pahang"
+  | "Perak"
+  | "Perlis"
+  | "Pulau Pinang"
+  | "Putrajaya"
+  | "Sabah"
+  | "Sarawak"
+  | "Selangor"
+  | "Terengganu";
+
 export type UserRole = "poster" | "picker" | "both";
 export type UserStatus = "pending" | "active" | "suspended";
 export type JobState = "open" | "urgent" | "taken" | "completed" | "cancelled";
@@ -31,7 +49,7 @@ export interface LawFirm {
   id: string;
   name: string;
   slug: string;
-  state: "Kuala Lumpur" | "Selangor";
+  state: MalaysianState;
   active: boolean;
   createdAt: Date;
 }

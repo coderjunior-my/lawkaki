@@ -1,6 +1,8 @@
 // Types and helpers for the picker's "my jobs" view.
 // Data populated by /api/jobs/picked.
 
+import type { MalaysianState } from "./types";
+
 export type PickedJobStatus = "awaiting" | "confirmed" | "completed";
 export type PaymentStatus   = "unpaid" | "paid";
 export type StatusFilter    = "all" | "today" | "awaiting" | "confirmed" | "completed";
@@ -10,7 +12,7 @@ export interface PickedJobPoster {
   name:      string;
   initials:  string;
   firm:      string;
-  firmState: "Kuala Lumpur" | "Selangor";
+  firmState: MalaysianState;
   phone:     string;
 }
 

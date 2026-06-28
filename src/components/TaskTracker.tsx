@@ -1,318 +1,718 @@
 "use client";
 
-import { useState, useEffect, CSSProperties } from "react";
-import { PickedJob, getTodayISO, parseTimeToMins } from "@/lib/pickedJobs";
-import { Job } from "@/lib/jobs";
-import { Interest } from "@/lib/interests";
-
-interface JobWithInterests extends Job {
-  interests: Interest[];
-}
+import { useState, CSSProperties } from "react";
 
 /* ============================================================
    Icons
    ============================================================ */
-interface IconProps { d: string | string[]; size?: number; sw?: number; style?: CSSProperties }
-function Icon({ d, size = 16, sw = 2, style }: IconProps) {
+interface IP { d: string | string[]; size?: number; sw?: number; fill?: string; style?: CSSProperties }
+function Icon({ d, size = 16, sw = 2, fill = "none", style }: IP) {
   return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none"
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill}
       stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden style={style}
-    >
+      aria-hidden style={style}>
       {Array.isArray(d) ? d.map((p, i) => <path key={i} d={p} />) : <path d={d} />}
     </svg>
   );
 }
-
 const I = {
-  check:    "M20 6 9 17l-5-5",
-  clock:    ["M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M12 7v5l3 2"],
-  star:     "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
-  alert:    ["M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z", "M12 9v4", "M12 17h.01"],
-  users:    ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M23 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75", "M9 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"],
-  close:    "M18 6 6 18M6 6l12 12",
-  chevR:    "m9 18 6-6-6-6",
-  map:      ["M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z", "M8 2v16", "M16 6v16"],
+  check: "M20 6 9 17l-5-5",
+  star:  "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+  clock: ["M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M12 7v5l3 2"],
 };
 
 /* ============================================================
-   Rating modal
+   Types
    ============================================================ */
-interface RatingValues {
-  punctuality:     number;
-  professionalism: number;
-  completeness:    number;
+type JobStep   = 0 | 1 | 2 | 3;
+type UserRole  = "picker" | "poster";
+type ReviewTab = "pending" | "given" | "received";
+
+interface UpcomingJob {
+  id:             string;
+  venue:          string;
+  docType:        string;
+  dateLabel:      string;
+  time:           string;
+  fee:            number;
+  step:           JobStep;
+  role:           UserRole;
+  otherName:      string;
+  whatsappSentAt: Partial<Record<1 | 2, string>>;
+  stepTimestamps: Partial<Record<JobStep, string>>;
+  docsStatus:     "dispatched" | "pending" | "not-required";
+  docsTracking?:  string;
 }
 
-function StarInput({
-  label, value, onChange,
+interface PendingReview {
+  id:        string;
+  venue:     string;
+  dateLabel: string;
+  otherName: string;
+  jobRole:   UserRole;
+  fee:       number;
+  docType:   string;
+}
+
+interface SubmittedReview {
+  id:          string;
+  venue:       string;
+  dateLabel:   string;
+  otherName:   string;
+  jobRole:     UserRole;
+  rating:      number;
+  comment?:    string;
+  submittedAt: string;
+}
+
+/* ============================================================
+   Mock data
+   ============================================================ */
+const INITIAL_UPCOMING: UpcomingJob[] = [
+  {
+    id: "u1", venue: "Damansara Heights", docType: "SPA",
+    dateLabel: "Today", time: "9:00 AM", fee: 200,
+    step: 0, role: "picker", otherName: "Priya Nair",
+    whatsappSentAt: {}, stepTimestamps: { 0: "8:45 AM" },
+    docsStatus: "pending",
+  },
+  {
+    id: "u2", venue: "KLCC", docType: "Loan docs",
+    dateLabel: "Today", time: "2:30 PM", fee: 300,
+    step: 2, role: "poster", otherName: "Ahmad Farid",
+    whatsappSentAt: { 1: "2:35 PM", 2: "3:10 PM" },
+    stepTimestamps: { 0: "Yesterday 4:00 PM", 1: "2:35 PM", 2: "3:10 PM" },
+    docsStatus: "dispatched", docsTracking: "Runner: Razif · ETA 4:00 PM",
+  },
+  {
+    id: "u3", venue: "Mont Kiara", docType: "MOT",
+    dateLabel: "Tomorrow", time: "11:00 AM", fee: 250,
+    step: 1, role: "picker", otherName: "Lim Wei Jie",
+    whatsappSentAt: { 1: "Yesterday 3:00 PM" },
+    stepTimestamps: { 0: "Yesterday 2:00 PM", 1: "Yesterday 3:00 PM" },
+    docsStatus: "not-required",
+  },
+];
+
+const INITIAL_PENDING: PendingReview[] = [
+  { id: "pr1", venue: "PJ Hilton",     dateLabel: "14 Jun", otherName: "Ahmad Firdaus", jobRole: "picker", fee: 200, docType: "SPA"  },
+  { id: "pr2", venue: "Bangsar South", dateLabel: "16 Jun", otherName: "Siti Rahimah",  jobRole: "picker", fee: 150, docType: "MOT"  },
+];
+const INITIAL_GIVEN: SubmittedReview[] = [
+  { id: "gr1", venue: "Subang Jaya", dateLabel: "10 Jun", otherName: "Rohan Krishnan",
+    jobRole: "picker", rating: 5, comment: "Excellent work. Very professional.", submittedAt: "11 Jun" },
+];
+const INITIAL_RECEIVED: SubmittedReview[] = [
+  { id: "rr1", venue: "Petaling Jaya", dateLabel: "8 Jun", otherName: "Nurul Ain",
+    jobRole: "poster", rating: 4, comment: "Arrived on time, handled docs well.", submittedAt: "9 Jun" },
+];
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+const STEP_LABELS = ["Scheduled", "Signing completed", "Runner collected docs", "Poster confirmed"];
+const STAR_LABELS: Record<number, string> = {
+  1: "Needs improvement", 2: "Below expectations", 3: "Satisfactory", 4: "Good kaki", 5: "Excellent kaki",
+};
+
+function ini(n: string) { return n.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase() || "?"; }
+
+/* ============================================================
+   Toast
+   ============================================================ */
+function Toast({ message, onDone }: { message: string; onDone: () => void }) {
+  useState(() => { const t = setTimeout(onDone, 2800); return () => clearTimeout(t); });
+  return (
+    <div style={{
+      position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+      background: "var(--black)", color: "#fff", borderRadius: 100, padding: "10px 20px",
+      fontSize: 13, fontWeight: 600, boxShadow: "0 4px 24px rgba(0,0,0,.18)",
+      zIndex: 400, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8,
+    }}>
+      <Icon d={I.check} size={14} sw={2.5} style={{ color: "#4ADE80" }} />
+      {message}
+    </div>
+  );
+}
+
+/* ============================================================
+   Avatar
+   ============================================================ */
+function Avatar({ name, size = 28 }: { name: string; size?: number }) {
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: "50%",
+      background: "var(--black)", color: "#fff", flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: size * 0.36, fontWeight: 700, letterSpacing: "-0.02em",
+    }}>{ini(name)}</div>
+  );
+}
+
+/* ============================================================
+   Chip
+   ============================================================ */
+function Chip({ label, color = "default" }: { label: string; color?: "default" | "navy" }) {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 100, lineHeight: 1.7,
+      background: color === "navy" ? "var(--black)" : "var(--pale-grey)",
+      color:      color === "navy" ? "#fff"          : "var(--warm-grey)",
+    }}>{label}</span>
+  );
+}
+
+/* ============================================================
+   Document dispatch status bar
+   ============================================================ */
+function DocDispatchBar({
+  status, tracking, onRemind,
 }: {
-  label: string; value: number; onChange: (v: number) => void;
+  status: "dispatched" | "pending" | "not-required";
+  tracking?: string;
+  onRemind?: () => void;
+}) {
+  if (status === "not-required") return null;
+  const dispatched = status === "dispatched";
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+      borderRadius: 8, marginBottom: 10,
+      background: dispatched ? "#F0FDF4" : "#FFFBEB",
+    }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+        background: dispatched ? "#25D366" : "var(--amber)",
+      }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: dispatched ? "#15803D" : "#92400E" }}>
+          {dispatched ? "Documents dispatched" : "Awaiting document dispatch"}
+        </div>
+        {tracking && (
+          <div style={{ fontSize: 11, color: "#15803D", marginTop: 1 }}>{tracking}</div>
+        )}
+      </div>
+      {!dispatched && (
+        <button onClick={onRemind} style={{
+          background: "transparent", border: "1px solid var(--amber)", borderRadius: 6,
+          padding: "3px 8px", fontSize: 11, fontWeight: 600, color: "#92400E", cursor: "pointer",
+        }}>Remind poster</button>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Vertical stepper
+   ============================================================ */
+function VerticalStepper({ step, whatsappSentAt, stepTimestamps }: {
+  step: JobStep;
+  whatsappSentAt: Partial<Record<1 | 2, string>>;
+  stepTimestamps: Partial<Record<JobStep, string>>;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      {STEP_LABELS.map((label, i) => {
+        const done    = i < step;
+        const current = i === step;
+        const isLast  = i === STEP_LABELS.length - 1;
+        const waTime  = i === 1 ? whatsappSentAt[1] : i === 2 ? whatsappSentAt[2] : undefined;
+        const ts      = stepTimestamps[i as JobStep];
+
+        return (
+          <div key={i} style={{ display: "flex", gap: 10 }}>
+            {/* Dot + connector column */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 20, flexShrink: 0 }}>
+              <div style={{
+                width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                background: done ? "#16A34A" : current ? "var(--amber)" : "#fff",
+                border: done || current ? "none" : "2px dashed var(--hair)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 300ms",
+              }}>
+                {done && (
+                  <svg width={10} height={10} viewBox="0 0 24 24" fill="none"
+                    stroke="#fff" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                )}
+                {current && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+              </div>
+              {!isLast && (
+                <div style={{
+                  width: 2, flex: 1, minHeight: 18,
+                  background: done ? "#16A34A" : "transparent",
+                  borderLeft: done ? "none" : "2px dashed var(--hair)",
+                  margin: "2px 0",
+                }} />
+              )}
+            </div>
+
+            {/* Label + meta column */}
+            <div style={{ paddingBottom: isLast ? 0 : 14, flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 12.5, lineHeight: 1.3,
+                fontWeight: current ? 700 : done ? 600 : 500,
+                color: done ? "#16A34A" : current ? "var(--black)" : "var(--warm-grey)",
+              }}>
+                {label}
+              </div>
+              {(done || current) && ts && (
+                <div style={{ fontSize: 10.5, color: "var(--warm-grey)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
+                  {ts}
+                </div>
+              )}
+              {waTime && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#25D366", flexShrink: 0 }} />
+                  <span style={{ fontSize: 10.5, color: "var(--warm-grey)" }}>WhatsApp sent · {waTime}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   Upcoming job card
+   ============================================================ */
+function UpcomingJobCard({
+  job, onAdvance,
+}: {
+  job: UpcomingJob;
+  onAdvance: (id: string, next: JobStep, waStep?: 1 | 2) => void;
+}) {
+  const isDone = job.step === 3;
+
+  const actionBtn = (() => {
+    if (isDone) return null;
+    if (job.role === "picker") {
+      if (job.step === 0) return { label: "Mark signing done",     next: 1 as JobStep, wa: 1 as 1 | 2 };
+      if (job.step === 1) return { label: "Runner collected docs",  next: 2 as JobStep, wa: 2 as 1 | 2 };
+      return null;
+    }
+    if (job.role === "poster" && job.step === 2)
+      return { label: "Confirm docs received", next: 3 as JobStep, wa: undefined };
+    return null;
+  })();
+
+  const waitMsg = (() => {
+    if (job.role === "picker" && job.step === 2) return "Waiting for poster to confirm receipt";
+    if (job.role === "poster" && job.step < 2)   return "Waiting for picker to complete";
+    return null;
+  })();
+
+  return (
+    <div style={{
+      background: "#fff",
+      border: `1px solid ${isDone ? "var(--pale-grey)" : "var(--hair)"}`,
+      borderRadius: 14, padding: "14px 14px 12px",
+      opacity: isDone ? 0.75 : 1,
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--black)" }}>{job.venue}</span>
+            <Chip label={job.role === "picker" ? "Picking" : "Posted"} color={job.role === "picker" ? "navy" : "default"} />
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--warm-grey)" }}>
+            {job.docType}
+            {" · "}
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>{job.dateLabel} · {job.time}</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 16, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: "var(--black)", flexShrink: 0, marginLeft: 12 }}>
+          RM {job.fee}
+        </div>
+      </div>
+
+      {/* Counterparty */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+        borderRadius: 8, background: "var(--pale-grey)", marginBottom: 12,
+      }}>
+        <Avatar name={job.otherName} size={22} />
+        <span style={{ fontSize: 12, color: "var(--warm-grey)" }}>
+          {job.role === "picker" ? "Posted by" : "Picked by"}{" "}
+          <span style={{ fontWeight: 600, color: "var(--black)" }}>{job.otherName}</span>
+        </span>
+      </div>
+
+      {/* Doc dispatch */}
+      <DocDispatchBar status={job.docsStatus} tracking={job.docsTracking} />
+
+      {/* Vertical stepper */}
+      <VerticalStepper
+        step={job.step}
+        whatsappSentAt={job.whatsappSentAt}
+        stepTimestamps={job.stepTimestamps}
+      />
+
+      {/* Action button */}
+      {actionBtn && (
+        <button
+          className="lk-btn lk-btn--accent"
+          onClick={() => onAdvance(job.id, actionBtn.next, actionBtn.wa)}
+          style={{ width: "100%", height: 40, fontSize: 13, marginTop: 12 }}
+        >
+          {actionBtn.label}
+        </button>
+      )}
+
+      {waitMsg && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6, marginTop: 10,
+          fontSize: 12, color: "var(--warm-grey)", fontStyle: "italic",
+        }}>
+          <Icon d={I.clock} size={12} sw={1.5} />
+          {waitMsg}
+        </div>
+      )}
+
+      {isDone && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6, marginTop: 10,
+          fontSize: 12.5, color: "#16A34A", fontWeight: 700,
+        }}>
+          <Icon d={I.check} size={14} sw={2.5} style={{ color: "#16A34A" }} />
+          Job complete
+        </div>
+      )}
+
+      {/* View details ghost */}
+      <button
+        className="lk-btn lk-btn--ghost lk-btn--sm"
+        style={{ width: "100%", height: 32, fontSize: 12, marginTop: 10 }}
+      >
+        View details
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================
+   Upcoming tab
+   ============================================================ */
+function UpcomingTab({
+  jobs, onAdvance,
+}: {
+  jobs: UpcomingJob[];
+  onAdvance: (id: string, next: JobStep, waStep?: 1 | 2) => void;
+}) {
+  if (jobs.length === 0) {
+    return (
+      <EmptyState icon={I.clock} title="Nothing coming up." sub="Jobs you pick will appear here." />
+    );
+  }
+
+  const groups: Record<string, UpcomingJob[]> = {};
+  for (const j of jobs) (groups[j.dateLabel] ??= []).push(j);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "12px 10px 24px" }}>
+      {Object.entries(groups).map(([label, grpJobs]) => (
+        <div key={label} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{
+            fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em",
+            textTransform: "uppercase", color: "var(--warm-grey)", paddingLeft: 2,
+          }}>
+            {label}
+          </div>
+          {grpJobs.map(j => <UpcomingJobCard key={j.id} job={j} onAdvance={onAdvance} />)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
+   Star picker — 44×44px touch targets per spec
+   ============================================================ */
+function StarPicker({ value, onChange, roleSuffix }: {
+  value: number; onChange: (v: number) => void; roleSuffix: string;
 }) {
   const [hover, setHover] = useState(0);
   const active = hover || value;
   return (
     <div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--black)", marginBottom: 10 }}>{label}</div>
-      <div style={{ display: "flex", gap: 6 }}>
-        {[1, 2, 3, 4, 5].map((s) => (
+      <div style={{ display: "flex", gap: 2 }}>
+        {[1, 2, 3, 4, 5].map(s => (
           <button
             key={s}
             onMouseEnter={() => setHover(s)}
             onMouseLeave={() => setHover(0)}
             onClick={() => onChange(s)}
-            style={{ background: "transparent", border: "none", padding: 2, cursor: "pointer" }}
-            aria-label={`${s} star${s > 1 ? "s" : ""}`}
+            style={{
+              width: 44, height: 44, background: "transparent", border: "none",
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            aria-label={`${s} star`}
           >
-            <svg
-              width={34} height={34} viewBox="0 0 24 24"
+            <svg width={32} height={32} viewBox="0 0 24 24"
               fill={active >= s ? "var(--amber)" : "none"}
               stroke={active >= s ? "var(--amber)" : "var(--hair)"}
-              strokeWidth={1.5}
-            >
+              strokeWidth={1.5}>
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
             </svg>
           </button>
         ))}
       </div>
+      {active > 0 && (
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--amber)", marginTop: 2 }}>
+          {STAR_LABELS[active]} — {roleSuffix}
+        </div>
+      )}
     </div>
   );
 }
 
-function RatingModal({
-  taskId, venue, pickerName, onClose, onDone,
+/* ============================================================
+   Pending review card — inline expand
+   ============================================================ */
+function PendingReviewCard({
+  review, onSubmit,
 }: {
-  taskId: string; venue: string; pickerName: string;
-  onClose: () => void; onDone: (taskId: string) => void;
+  review: PendingReview;
+  onSubmit: (id: string, rating: number, comment: string) => void;
 }) {
-  const [values, setValues] = useState<RatingValues>({ punctuality: 0, professionalism: 0, completeness: 0 });
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [rating, setRating]     = useState(0);
+  const [comment, setComment]   = useState("");
+  const [busy, setBusy]         = useState(false);
 
-  const ready = values.punctuality > 0 && values.professionalism > 0 && values.completeness > 0;
+  const isPoster  = review.jobRole === "poster";
+  const ctaLabel  = isPoster ? "Rate your picker" : "Rate the poster";
+  const question  = isPoster ? "How was your picking kaki?" : "How was the posting kaki?";
+  const roleSuffix = isPoster ? "as poster" : "as picker";
+  const placeholder = isPoster
+    ? "e.g. Arrived on time, thorough with the documents. Would use again."
+    : "e.g. Clear brief, documents were ready on time. Smooth job.";
 
   async function submit() {
-    if (!ready) return;
+    if (!rating) return;
     setBusy(true);
-    // POST /api/jobs/:id/rate would go here
-    await new Promise((r) => setTimeout(r, 700));
-    setDone(true);
-    setTimeout(() => { onDone(taskId); onClose(); }, 1400);
+    await new Promise(r => setTimeout(r, 600));
+    onSubmit(review.id, rating, comment);
   }
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(15,31,51,0.45)",
-        zIndex: 300, display: "flex", alignItems: "flex-end", justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#FFFFFF", borderRadius: "20px 20px 0 0",
-          width: "100%", maxWidth: 480, padding: "8px 0 0",
-          boxShadow: "0 -8px 40px -8px rgba(15,31,51,0.22)",
-        }}
-      >
-        <div style={{ width: 40, height: 4, background: "var(--hair)", borderRadius: 999, margin: "0 auto 20px" }} />
-        <div style={{ padding: "0 24px 32px" }}>
-          {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em" }}>How did it go?</div>
-              <div style={{ fontSize: 13, color: "var(--warm-grey)", marginTop: 3 }}>
-                {pickerName} · {venue}
-              </div>
-            </div>
+    <div style={{
+      background: "#fff", border: "1px solid var(--hair)",
+      borderRadius: 14, padding: "13px 14px",
+    }}>
+      {/* Card header — always visible */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Avatar name={review.otherName} size={32} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--black)" }}>{review.otherName}</div>
+          <div style={{ fontSize: 11.5, color: "var(--warm-grey)" }}>
+            {review.venue}
+            {" · "}
+            {review.dateLabel}
+            {" · "}
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>RM {review.fee}</span>
+          </div>
+          <div style={{ marginTop: 5, display: "flex", gap: 5 }}>
+            <Chip label={isPoster ? "You posted · Rate picker" : "You picked · Rate poster"} color="default" />
+          </div>
+        </div>
+        {!expanded && (
+          <button
+            onClick={() => setExpanded(true)}
+            className="lk-btn lk-btn--accent lk-btn--sm"
+            style={{ flexShrink: 0, height: 32, fontSize: 11.5 }}
+          >
+            {ctaLabel}
+          </button>
+        )}
+      </div>
+
+      {/* Inline form — expands on click */}
+      {expanded && (
+        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--black)" }}>{question}</div>
+          <StarPicker value={rating} onChange={setRating} roleSuffix={roleSuffix} />
+          <textarea
+            value={comment}
+            onChange={e => setComment(e.target.value)}
+            placeholder={placeholder}
+            rows={3}
+            style={{
+              width: "100%", boxSizing: "border-box",
+              border: "1px solid var(--hair)", borderRadius: 8,
+              padding: "9px 12px", fontSize: 12.5, color: "var(--black)",
+              background: "#FAFAF9", resize: "none", outline: "none",
+              fontFamily: "inherit", lineHeight: 1.5,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
             <button
-              onClick={onClose}
-              style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--warm-grey)", padding: 4 }}
+              className={`lk-btn ${rating ? "lk-btn--accent" : "lk-btn--secondary"}`}
+              disabled={!rating || busy}
+              onClick={submit}
+              style={{ flex: 1, height: 40, fontSize: 13 }}
             >
-              <Icon d={I.close} size={18} />
+              {busy ? "Submitting…" : "Submit"}
+            </button>
+            <button
+              onClick={() => setExpanded(false)}
+              className="lk-btn lk-btn--ghost"
+              style={{ height: 40, fontSize: 13, padding: "0 16px" }}
+            >
+              Cancel
             </button>
           </div>
-
-          {done ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, height: 60, color: "#1F8A5B", fontWeight: 700, fontSize: 15 }}>
-              <Icon d={I.check} size={20} sw={2.5} />
-              Rating submitted. Terima kasih!
-            </div>
-          ) : (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 26, marginBottom: 28 }}>
-                <StarInput
-                  label="Punctuality — did they arrive on time?"
-                  value={values.punctuality}
-                  onChange={(v) => setValues({ ...values, punctuality: v })}
-                />
-                <StarInput
-                  label="Professionalism — did they represent the firm well?"
-                  value={values.professionalism}
-                  onChange={(v) => setValues({ ...values, professionalism: v })}
-                />
-                <StarInput
-                  label="Completeness — were all documents handled correctly?"
-                  value={values.completeness}
-                  onChange={(v) => setValues({ ...values, completeness: v })}
-                />
-              </div>
-              <button
-                className={`lk-btn ${ready ? "lk-btn--accent" : "lk-btn--secondary"}`}
-                disabled={!ready || busy}
-                onClick={submit}
-                style={{ width: "100%", height: 48 }}
-              >
-                {busy ? "Submitting…" : "Submit rating"}
-              </button>
-              {!ready && (
-                <p style={{ fontSize: 12, color: "var(--warm-grey)", textAlign: "center", margin: "8px 0 0" }}>
-                  Rate all three to submit.
-                </p>
-              )}
-            </>
-          )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   Section header
-   ============================================================ */
-function SectionHeader({ title, count }: { title: string; count?: number }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 2px 4px" }}>
-      <span style={{
-        fontSize: 10.5, fontWeight: 700, color: "var(--warm-grey)",
-        letterSpacing: "0.08em", textTransform: "uppercase",
-      }}>
-        {title}
-      </span>
-      {count !== undefined && count > 0 && (
-        <span style={{
-          fontSize: 10, fontWeight: 700, background: "var(--amber)", color: "var(--black)",
-          borderRadius: 999, padding: "1px 7px", lineHeight: 1.6,
-        }}>
-          {count}
-        </span>
       )}
     </div>
   );
 }
 
 /* ============================================================
-   Action task card
+   Submitted review card (Given / Received)
    ============================================================ */
-type TaskType = "confirm" | "rate" | "no-taker";
-
-interface ActionTask {
-  id:      string;
-  type:    TaskType;
-  venue:   string;
-  detail:  string;
-  time?:   string;
-  meta?:   string;
-}
-
-const TASK_STYLE: Record<TaskType, { icon: string | string[]; iconBg: string; iconColor: string; border: string; bg: string }> = {
-  "no-taker": {
-    icon: ["M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z", "M12 9v4", "M12 17h.01"],
-    iconBg: "#F9DDB4", iconColor: "#7A4A0F", border: "#F9DDB4", bg: "#FEF9EE",
-  },
-  confirm: {
-    icon: ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M23 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75", "M9 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"],
-    iconBg: "#F9DDB4", iconColor: "#7A4A0F", border: "#F9DDB4", bg: "#FEF9EE",
-  },
-  rate: {
-    icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
-    iconBg: "var(--pale-grey)", iconColor: "var(--black)", border: "var(--hair)", bg: "#FFFFFF",
-  },
-};
-
-function ActionTaskCard({
-  task, ctaLabel, onCta,
+function SubmittedReviewCard({
+  review, direction,
 }: {
-  task: ActionTask; ctaLabel: string; onCta: () => void;
+  review: SubmittedReview;
+  direction: "given" | "received";
 }) {
-  const s = TASK_STYLE[task.type];
-  const isAmber = task.type !== "rate";
+  const roleTag = direction === "given"
+    ? `Reviewed as ${review.jobRole}`
+    : `Review from ${review.jobRole}`;
+
   return (
-    <div style={{
-      background: s.bg, border: `1px solid ${s.border}`,
-      borderRadius: 12, padding: "12px 14px", display: "flex", gap: 12, alignItems: "flex-start",
-    }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: 10, background: s.iconBg,
-        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-      }}>
-        <Icon d={s.icon} size={16} sw={2} style={{ color: s.iconColor }} />
-      </div>
+    <div style={{ padding: "12px 14px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <Avatar name={review.otherName} size={30} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--black)", lineHeight: 1.3 }}>{task.venue}</div>
-        <div style={{ fontSize: 12, color: "var(--warm-grey)", marginTop: 2 }}>
-          {task.detail}
-          {task.time && <> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{task.time}</span></>}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--black)" }}>{review.otherName}</div>
+            <div style={{ fontSize: 11.5, color: "var(--warm-grey)" }}>{review.venue} · {review.dateLabel}</div>
+          </div>
+          <div style={{ display: "flex", gap: 1.5, flexShrink: 0 }}>
+            {[1, 2, 3, 4, 5].map(s => (
+              <svg key={s} width={12} height={12} viewBox="0 0 24 24"
+                fill={s <= review.rating ? "var(--amber)" : "none"}
+                stroke={s <= review.rating ? "var(--amber)" : "var(--hair)"}
+                strokeWidth={1.5}>
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+            ))}
+          </div>
         </div>
-        <button
-          className="lk-btn lk-btn--sm"
-          onClick={onCta}
-          style={{
-            marginTop: 10, height: 30, fontSize: 11,
-            background: isAmber ? "var(--amber)" : "var(--black)",
-            borderColor: isAmber ? "var(--amber)" : "var(--black)",
-            color: isAmber ? "var(--black)" : "var(--off-white)",
-          }}
-        >
-          {ctaLabel}
-        </button>
+        {review.comment && (
+          <div style={{ fontSize: 12, color: "var(--warm-grey)", marginTop: 5, lineHeight: 1.5, fontStyle: "italic" }}>
+            "{review.comment}"
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center" }}>
+          <Chip label={roleTag} color="default" />
+          <span style={{ fontSize: 10.5, color: "var(--hair)" }}>· {review.submittedAt}</span>
+        </div>
       </div>
     </div>
   );
 }
 
 /* ============================================================
-   Appointment row (today / coming up)
+   Reviews tab
    ============================================================ */
-function AppointmentRow({ job, index, showIndex }: { job: PickedJob; index?: number; showIndex?: boolean }) {
+function ReviewsTab({
+  pending, given, received, onSubmit,
+}: {
+  pending:  PendingReview[];
+  given:    SubmittedReview[];
+  received: SubmittedReview[];
+  onSubmit: (id: string, rating: number, comment: string) => void;
+}) {
+  const [sub, setSub] = useState<ReviewTab>("pending");
+
+  const SUB_TABS: { id: ReviewTab; label: string; count?: number }[] = [
+    { id: "pending",  label: "Pending",  count: pending.length },
+    { id: "given",    label: "Given",    count: given.length },
+    { id: "received", label: "Received", count: received.length },
+  ];
+
   return (
-    <div style={{
-      background: "#FFFFFF", border: "1px solid var(--hair)", borderRadius: 12,
-      padding: "12px 14px", display: "flex", gap: 12, alignItems: "center",
-    }}>
-      {showIndex && index !== undefined ? (
-        <div style={{
-          width: 36, height: 36, borderRadius: 10, background: "var(--pale-grey)",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          fontSize: 13, fontWeight: 800, color: "var(--black)", fontVariantNumeric: "tabular-nums",
-        }}>
-          {index + 1}
-        </div>
-      ) : (
-        <div style={{
-          width: 36, height: 36, borderRadius: 10, background: "var(--pale-grey)",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-        }}>
-          <Icon d={I.clock} size={16} sw={2} style={{ color: "var(--warm-grey)" }} />
-        </div>
-      )}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--black)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {job.venue}
-        </div>
-        <div style={{ fontSize: 12, color: "var(--warm-grey)", marginTop: 2 }}>
-          {job.docType}
-          {!showIndex && <> · {job.dateLabel}</>}
-          {" · "}
-          <span style={{ fontVariantNumeric: "tabular-nums" }}>{job.time}</span>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <div style={{ display: "flex", borderBottom: "1px solid var(--hair)", paddingLeft: 10, flexShrink: 0 }}>
+        {SUB_TABS.map(({ id, label, count }) => (
+          <button key={id} onClick={() => setSub(id)} style={{
+            background: "transparent", border: "none", cursor: "pointer",
+            padding: "10px 14px", fontSize: 12.5,
+            fontWeight: sub === id ? 700 : 500,
+            color: sub === id ? "var(--black)" : "var(--warm-grey)",
+            borderBottom: sub === id ? "2px solid var(--black)" : "2px solid transparent",
+            display: "flex", alignItems: "center", gap: 5, transition: "all 120ms",
+          }}>
+            {label}
+            {count !== undefined && count > 0 && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "0 6px", lineHeight: 1.7,
+                background: id === "pending" ? "var(--amber)" : "var(--pale-grey)",
+                color:      id === "pending" ? "var(--black)" : "var(--warm-grey)",
+              }}>{count}</span>
+            )}
+          </button>
+        ))}
       </div>
-      <div style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--black)", flexShrink: 0 }}>
-        RM {job.fee}
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 10px 24px" }}>
+        {sub === "pending" && (
+          pending.length === 0
+            ? <EmptyState icon={I.star} title="No pending reviews." sub="You're all caught up." />
+            : <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {pending.map(r => <PendingReviewCard key={r.id} review={r} onSubmit={onSubmit} />)}
+              </div>
+        )}
+        {sub === "given" && (
+          given.length === 0
+            ? <EmptyState icon={I.star} title="No reviews given yet." sub="Reviews you submit will appear here." />
+            : <div style={{ background: "#fff", border: "1px solid var(--hair)", borderRadius: 14, overflow: "hidden" }}>
+                {given.map((r, i) => (
+                  <div key={r.id}>
+                    {i > 0 && <div style={{ height: 1, background: "var(--hair)" }} />}
+                    <SubmittedReviewCard review={r} direction="given" />
+                  </div>
+                ))}
+              </div>
+        )}
+        {sub === "received" && (
+          received.length === 0
+            ? <EmptyState icon={I.star} title="No reviews yet." sub="Reviews from colleagues will show here." />
+            : <div style={{ background: "#fff", border: "1px solid var(--hair)", borderRadius: 14, overflow: "hidden" }}>
+                {received.map((r, i) => (
+                  <div key={r.id}>
+                    {i > 0 && <div style={{ height: 1, background: "var(--hair)" }} />}
+                    <SubmittedReviewCard review={r} direction="received" />
+                  </div>
+                ))}
+              </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Empty state
+   ============================================================ */
+function EmptyState({ icon, title, sub }: { icon: string | string[]; title: string; sub: string }) {
+  return (
+    <div style={{ padding: "40px 20px", textAlign: "center" }}>
+      <div style={{
+        width: 48, height: 48, borderRadius: 999, background: "var(--pale-grey)",
+        display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px",
+      }}>
+        <Icon d={icon} size={20} sw={1.5} style={{ color: "var(--warm-grey)" }} />
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--black)", marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 12.5, color: "var(--warm-grey)" }}>{sub}</div>
     </div>
   );
 }
@@ -321,197 +721,93 @@ function AppointmentRow({ job, index, showIndex }: { job: PickedJob; index?: num
    TaskTracker — main export
    ============================================================ */
 export default function TaskTracker({
-  token      = "",
-  pickedJobs = [],
   onNavigate,
 }: {
   token?:      string;
-  pickedJobs?: PickedJob[];
+  pickedJobs?: unknown[];
   onNavigate?: (view: "browse" | "my-jobs" | "picked") => void;
 }) {
-  const [postedJobs, setPostedJobs] = useState<JobWithInterests[]>([]);
-  const [dismissed, setDismissed]   = useState<Set<string>>(new Set());
-  const [ratingTarget, setRatingTarget] = useState<{
-    taskId: string; venue: string; pickerName: string;
-  } | null>(null);
+  const [tab, setTab]       = useState<"upcoming" | "reviews">("upcoming");
+  const [jobs, setJobs]     = useState<UpcomingJob[]>(INITIAL_UPCOMING);
+  const [pending, setPending] = useState<PendingReview[]>(INITIAL_PENDING);
+  const [given, setGiven]   = useState<SubmittedReview[]>(INITIAL_GIVEN);
+  const [received]          = useState<SubmittedReview[]>(INITIAL_RECEIVED);
+  const [toast, setToast]   = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/jobs/posted", {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((r) => r.json())
-      .then((d) => setPostedJobs(d.jobs ?? []))
-      .catch(() => {});
-  }, [token]);
-
-  const todayISO = getTodayISO();
-
-  /* ── Derive action tasks from posted jobs ── */
-  const confirmTasks: ActionTask[] = postedJobs
-    .filter((j) => j.state !== "taken" && j.interests.length > 0 && !dismissed.has(j.id))
-    .map((j) => ({
-      id:     j.id,
-      type:   "confirm" as TaskType,
-      venue:  j.venue,
-      detail: `${j.interests.length} interested kaki${j.interests.length > 1 ? "s" : ""} · ${j.docType}`,
-      time:   j.time,
+  function advanceStep(id: string, next: JobStep, waStep?: 1 | 2) {
+    const job = jobs.find(j => j.id === id);
+    setJobs(prev => prev.map(j => j.id !== id ? j : {
+      ...j,
+      step: next,
+      stepTimestamps: { ...j.stepTimestamps, [next]: "Just now" },
+      whatsappSentAt: waStep ? { ...j.whatsappSentAt, [waStep]: "Just now" } : j.whatsappSentAt,
     }));
+    if (waStep && job) {
+      const firstName = job.otherName.split(" ")[0];
+      setToast(`Signing marked as done. ${firstName} notified via WhatsApp.`);
+    } else if (next === 3) {
+      setToast("Job confirmed. Well done, kaki!");
+    }
+  }
 
-  const noTakerTasks: ActionTask[] = postedJobs
-    .filter((j) => j.state === "urgent" && j.interests.length === 0 && !dismissed.has(`nt-${j.id}`))
-    .map((j) => ({
-      id:     `nt-${j.id}`,
-      type:   "no-taker" as TaskType,
-      venue:  j.venue,
-      detail: `No taker yet · ${j.docType}`,
-      time:   j.time,
-    }));
+  function submitReview(id: string, rating: number, comment: string) {
+    const r = pending.find(p => p.id === id);
+    if (!r) return;
+    setPending(prev => prev.filter(p => p.id !== id));
+    setGiven(prev => [{
+      id, venue: r.venue, dateLabel: r.dateLabel,
+      otherName: r.otherName, jobRole: r.jobRole,
+      rating, comment: comment || undefined, submittedAt: "Today",
+    }, ...prev]);
+    setToast(`Review submitted for ${r.otherName.split(" ")[0]}. Terima kasih, kaki.`);
+  }
 
-  /* ── Mock completed jobs needing rating ──
-     In production these come from GET /api/jobs/completed-unrated.
-     Kept here so the rating flow UI is visible during the pilot. ── */
-  const rateTasks: ActionTask[] = ([
-    {
-      id:     "rate-demo-1",
-      type:   "rate" as TaskType,
-      venue:  "PJ Hilton",
-      detail: "Loan documentation · 14 Jun",
-      meta:   "Ahmad Firdaus",
-    },
-  ] as ActionTask[]).filter((t) => !dismissed.has(t.id));
-
-  const actionTasks = [...noTakerTasks, ...confirmTasks, ...rateTasks];
-
-  /* ── Derive appointment lists from picked jobs ── */
-  const todayJobs = pickedJobs
-    .filter((j) => j.dateISO === todayISO && j.status !== "awaiting")
-    .sort((a, b) => parseTimeToMins(a.time) - parseTimeToMins(b.time));
-
-  const upcomingJobs = pickedJobs
-    .filter((j) => j.dateISO > todayISO && j.status === "confirmed")
-    .sort((a, b) =>
-      a.dateISO !== b.dateISO
-        ? a.dateISO.localeCompare(b.dateISO)
-        : parseTimeToMins(a.time) - parseTimeToMins(b.time)
-    )
-    .slice(0, 5);
-
-  const totalActions = actionTasks.length;
-  const isEmpty = totalActions === 0 && todayJobs.length === 0 && upcomingJobs.length === 0;
+  const MAIN_TABS = [
+    { id: "upcoming" as const, label: "Upcoming", count: jobs.filter(j => j.step < 3).length },
+    { id: "reviews"  as const, label: "Reviews",  count: pending.length },
+  ];
 
   return (
     <>
       {/* Header */}
       <div style={{
-        padding: "14px 18px 10px", borderBottom: "1px solid var(--hair)",
-        background: "#FFFFFF", flexShrink: 0,
+        padding: "14px 18px 0", borderBottom: "1px solid var(--hair)",
+        background: "#fff", flexShrink: 0,
       }}>
-        <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>My tasks</div>
-        <div style={{ fontSize: 12, color: "var(--warm-grey)", marginTop: 2 }}>
-          {totalActions > 0
-            ? `${totalActions} action${totalActions > 1 ? "s" : ""} needed`
-            : todayJobs.length > 0
-            ? `${todayJobs.length} appointment${todayJobs.length > 1 ? "s" : ""} today`
-            : "You're all caught up."}
+        <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: 12 }}>
+          My tasks
+        </div>
+        <div style={{ display: "flex" }}>
+          {MAIN_TABS.map(({ id, label, count }) => (
+            <button key={id} onClick={() => setTab(id)} style={{
+              background: "transparent", border: "none", cursor: "pointer",
+              padding: "8px 16px 10px", fontSize: 13.5,
+              fontWeight: tab === id ? 700 : 500,
+              color: tab === id ? "var(--black)" : "var(--warm-grey)",
+              borderBottom: tab === id ? "2px solid var(--black)" : "2px solid transparent",
+              display: "flex", alignItems: "center", gap: 5, transition: "all 120ms",
+            }}>
+              {label}
+              {count > 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "0 6px", lineHeight: 1.7,
+                  background: "var(--amber)", color: "var(--black)",
+                }}>{count}</span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 10px", display: "flex", flexDirection: "column", gap: 20 }}>
-
-        {/* Action needed */}
-        {actionTasks.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <SectionHeader title="Action needed" count={totalActions} />
-            {[...noTakerTasks, ...confirmTasks].map((t) => (
-              <ActionTaskCard
-                key={t.id}
-                task={t}
-                ctaLabel={t.type === "confirm" ? "See who's interested" : "Re-share to colleagues"}
-                onCta={() => onNavigate?.("my-jobs")}
-              />
-            ))}
-            {rateTasks.map((t) => (
-              <ActionTaskCard
-                key={t.id}
-                task={t}
-                ctaLabel={`Rate ${t.meta?.split(" ")[0] ?? "kaki"}`}
-                onCta={() =>
-                  setRatingTarget({ taskId: t.id, venue: t.venue, pickerName: t.meta! })
-                }
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Today */}
-        {todayJobs.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <SectionHeader title="Today" />
-            {todayJobs.map((j, idx) => (
-              <AppointmentRow key={j.id} job={j} index={idx} showIndex />
-            ))}
-            <button
-              className="lk-btn lk-btn--ghost lk-btn--sm"
-              onClick={() => onNavigate?.("picked")}
-              style={{ alignSelf: "flex-start", height: 30, fontSize: 11, gap: 6 }}
-            >
-              <Icon d={I.map} size={12} />
-              View route map
-            </button>
-          </div>
-        )}
-
-        {/* Coming up */}
-        {upcomingJobs.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <SectionHeader title="Coming up" />
-            {upcomingJobs.map((j) => (
-              <AppointmentRow key={j.id} job={j} />
-            ))}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {isEmpty && (
-          <div style={{ padding: "48px 20px", textAlign: "center" }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 999, background: "var(--pale-grey)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              margin: "0 auto 16px",
-            }}>
-              <Icon d={I.check} size={24} sw={2.5} style={{ color: "var(--warm-grey)" }} />
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--black)", marginBottom: 6 }}>
-              All clear.
-            </div>
-            <div style={{ fontSize: 13, color: "var(--warm-grey)", lineHeight: 1.6 }}>
-              No actions needed and nothing on the calendar.
-            </div>
-            <button
-              className="lk-btn lk-btn--accent lk-btn--sm"
-              onClick={() => onNavigate?.("browse")}
-              style={{ marginTop: 20, height: 36 }}
-            >
-              Browse jobs
-            </button>
-          </div>
-        )}
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+        {tab === "upcoming"
+          ? <UpcomingTab jobs={jobs} onAdvance={advanceStep} />
+          : <ReviewsTab pending={pending} given={given} received={received} onSubmit={submitReview} />
+        }
       </div>
 
-      {/* Rating modal */}
-      {ratingTarget && (
-        <RatingModal
-          taskId={ratingTarget.taskId}
-          venue={ratingTarget.venue}
-          pickerName={ratingTarget.pickerName}
-          onClose={() => setRatingTarget(null)}
-          onDone={(id) => {
-            setDismissed((prev) => new Set([...prev, id]));
-            setRatingTarget(null);
-          }}
-        />
-      )}
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </>
   );
 }

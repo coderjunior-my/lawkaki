@@ -1,5 +1,7 @@
 // DB row → frontend shape transformers
 
+import type { MalaysianState } from "./types";
+
 const MYT = "Asia/Kuala_Lumpur";
 
 function initials(name: string | null): string {
@@ -128,7 +130,7 @@ export function formatPostedJob(row: any, interests: any[]) {
           phone:           p?.phone ?? "",
           initials:        initials(p?.name),
           firm:            p?.firm_name ?? "",
-          firmState:       (p?.firm_state ?? "Kuala Lumpur") as "Kuala Lumpur" | "Selangor",
+          firmState:       (p?.firm_state ?? "Kuala Lumpur") as MalaysianState,
           totalJobs:       showRating ? Number(rating.total_jobs) : 0,
           avgRating:       showRating ? Number(rating.avg_rating) : null,
           punctuality:     showRating ? Number(rating.avg_punctuality) : null,
@@ -170,7 +172,7 @@ export function formatPickedJob(row: any, statusOverride?: "awaiting") {
       name:      poster.name,
       initials:  initials(poster.name),
       firm:      poster.firm_name ?? "",
-      firmState: (poster.firm_state ?? "Kuala Lumpur") as "Kuala Lumpur" | "Selangor",
+      firmState: (poster.firm_state ?? "Kuala Lumpur") as MalaysianState,
       phone:     poster.phone,
     } : null,
     x: row.map_x ?? 500,
