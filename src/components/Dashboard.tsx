@@ -1435,12 +1435,14 @@ export default function Dashboard({
         background: "var(--off-white)",
       }}
     >
-      <TopNav
-        isMobile={isMobile}
-        onSignOut={onSignOut}
-        onSettings={() => setShowSettings(true)}
-        userName={displayName}
-      />
+      {!showSettings && (
+        <TopNav
+          isMobile={isMobile}
+          onSignOut={onSignOut}
+          onSettings={() => setShowSettings(true)}
+          userName={displayName}
+        />
+      )}
 
       <main style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
         {/* Left panel */}
