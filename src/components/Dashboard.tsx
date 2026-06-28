@@ -80,17 +80,14 @@ const I = {
 /* ============================================================
    Logo mark
    ============================================================ */
-function LogoMark({ height = 38 }: { height?: number }) {
-  const w = Math.round(height * 0.8);
+function LogoMark() {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-      {/* Pin SVG */}
-      <svg width={w} height={height} viewBox="0 0 80 100" fill="none" aria-hidden>
+    <a href="/" style={{ display: "flex", alignItems: "center", gap: 12, textDecoration: "none", flexShrink: 0 }}>
+      <svg width="32" height="40" viewBox="0 0 80 100" fill="none" aria-hidden>
         <path
           d="M40 4 C60.4 4 76 19.6 76 40 C76 53.6 67.5 66 56 76 L40 96 L24 76 C12.5 66 4 53.6 4 40 C4 19.6 19.6 4 40 4 Z"
           fill="#0F1F33"
         />
-        {/* Footprint glyph */}
         <g fill="#FAF7F2" transform="translate(40 42) scale(0.34) translate(-30 -50)">
           <ellipse cx="30" cy="64" rx="18" ry="28" />
           <ellipse cx="14" cy="32" rx="4.4" ry="5.4" />
@@ -100,31 +97,11 @@ function LogoMark({ height = 38 }: { height?: number }) {
           <ellipse cx="48" cy="30" rx="2.8" ry="3.4" />
         </g>
       </svg>
-      {/* Text */}
       <div>
-        <div
-          style={{
-            fontSize: Math.round(height * 0.55),
-            fontWeight: 600,
-            letterSpacing: "-0.02em",
-            color: "var(--black)",
-            lineHeight: 1.1,
-          }}
-        >
-          Law Kaki
-        </div>
-        <div
-          style={{
-            fontSize: Math.max(9, Math.round(height * 0.22)),
-            fontWeight: 500,
-            color: "var(--warm-grey)",
-            letterSpacing: "-0.005em",
-          }}
-        >
-          Your best legal kaki on the ground.
-        </div>
+        <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1, color: "var(--black)" }}>Law Kaki</div>
+        <div style={{ fontSize: 11, color: "var(--warm-grey)", fontWeight: 500 }}>Your best legal kaki on the ground.</div>
       </div>
-    </div>
+    </a>
   );
 }
 
@@ -139,23 +116,20 @@ function getInitials(name: string): string {
 }
 
 function TopNav({
-  logoSize = 38,
   isMobile = false,
   onSignOut,
   onSettings,
   userName = "",
 }: {
-  logoSize?: number;
   isMobile?: boolean;
   onSignOut?: () => void;
   onSettings?: () => void;
   userName?: string;
 }) {
-  const navH = Math.max(60, logoSize + 28);
   return (
     <header
       style={{
-        height: navH,
+        height: 64,
         background: "#FFFFFF",
         borderBottom: "1px solid var(--hair)",
         display: "flex",
@@ -165,7 +139,7 @@ function TopNav({
         flexShrink: 0,
       }}
     >
-      <LogoMark height={logoSize} />
+      <LogoMark />
 
       {/* Search */}
       <div style={{ flex: 1, maxWidth: 420, marginLeft: 16, position: "relative", display: isMobile ? "none" : undefined }}>
