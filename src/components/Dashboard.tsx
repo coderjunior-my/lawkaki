@@ -1659,9 +1659,12 @@ export default function Dashboard({
   const [pickedFilter, setPickedFilter] = useState<StatusFilter>("today");
   const [allJobs, setAllJobs]           = useState<Job[]>([]);
   const [pickedJobs, setPickedJobs]     = useState<PickedJob[]>([]);
-  // null = not loaded yet — deliberately distinct from false, so the
-  // critical notice never flashes on screen before we actually know.
-  const [bankDetailsAdded, setBankDetailsAdded] = useState<boolean | null>(null);
+  // undefined = not loaded yet, null = loaded but nothing saved — kept
+  // distinct so the critical notice never flashes on screen before we
+  // actually know either way.
+  const [bankDetails, setBankDetails] = useState<
+    { bankName: string; accountNumber: string; accountHolderName: string } | null | undefined
+  >(undefined);
   const [billingDueNow, setBillingDueNow] = useState(0);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"profile" | "history" | "billing">("profile");
 
@@ -1684,7 +1687,7 @@ export default function Dashboard({
 
       fetch("/api/users/me", { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.json())
-        .then((d) => setBankDetailsAdded(Boolean(d.bankDetailsAdded)))
+        .then((d) => setBankDetails(d.bankDetails ?? null))
         .catch(() => {});
 
       fetch("/api/billing/transactions", { headers: { Authorization: `Bearer ${token}` } })
@@ -1773,7 +1776,7 @@ export default function Dashboard({
         />
       )}
 
-      {bankDetailsAdded === false && (
+      {bankDetails === null && (
         <CriticalNotice
           message="Add your bank details so you can get paid for jobs you pick up."
           actionLabel="Add bank details"
@@ -1823,8 +1826,8 @@ export default function Dashboard({
                     setDisplayName(n);
                     localStorage.setItem("lk_name", n);
                   }}
-                  bankDetailsAdded={Boolean(bankDetailsAdded)}
-                  onBankDetailsAdded={() => setBankDetailsAdded(true)}
+                  bankDetails={bankDetails ?? null}
+                  onBankDetailsSaved={(d) => setBankDetails(d)}
                   initialTab={settingsInitialTab}
                 />
               ) : (

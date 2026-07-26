@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
   const { data: user, error } = await supabase
     .from("users")
-    .select("role, bank_details_added")
+    .select("role, name, bank_name, bank_account_number")
     .eq("id", userId)
     .single();
 
@@ -23,6 +23,11 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     role: user.role,
-    bankDetailsAdded: user.bank_details_added,
+    bankDetailsAdded: Boolean(user.bank_account_number),
+    bankDetails: user.bank_account_number ? {
+      bankName:          user.bank_name,
+      accountNumber:     user.bank_account_number,
+      accountHolderName: user.name, // always the logged-in user — see schema.sql
+    } : null,
   });
 }

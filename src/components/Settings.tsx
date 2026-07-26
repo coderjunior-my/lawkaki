@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, CSSProperties } from "react";
 import { PLATFORM_BANK_DETAILS as PLATFORM_BANK } from "@/lib/billing";
+import { MALAYSIAN_BANKS } from "@/lib/banks";
 
 /* ============================================================
    Icons (Lucide-style, outlined, 2px stroke)
@@ -222,28 +223,53 @@ function isValidEmail(email: string): boolean {
 /* ============================================================
    Profile tab
    ============================================================ */
+interface BankDetails { bankName: string; accountNumber: string; accountHolderName: string }
+const ACCOUNT_NUMBER_RE = /^\d{6,20}$/;
+
 function ProfileTab({
-  user, setUser, onSignOut, token, bankDetailsAdded, onBankDetailsAdded,
+  user, setUser, onSignOut, token, bankDetails, onBankDetailsSaved,
 }: {
   user: User; setUser: (u: User) => void; onSignOut?: () => void;
-  token?: string; bankDetailsAdded?: boolean; onBankDetailsAdded?: () => void;
+  token?: string; bankDetails?: BankDetails | null; onBankDetailsSaved?: (d: BankDetails) => void;
 }) {
   const [editing, setEditing]     = useState(false);
   const [draft, setDraft]         = useState<User>({ ...user });
   const [firmOpen, setFirmOpen]   = useState(false);
   const [saved, setSaved]         = useState(false);
-  const [bankSaving, setBankSaving] = useState(false);
   const fileRef                   = useRef<HTMLInputElement>(null);
 
-  async function addBankDetails() {
-    if (!token || bankDetailsAdded) return;
+  const [bankFormOpen, setBankFormOpen]     = useState(false);
+  const [bankName, setBankName]             = useState("");
+  const [accountNumber, setAccountNumber]   = useState("");
+  const [bankSaving, setBankSaving]         = useState(false);
+  const [bankError, setBankError]           = useState<string | null>(null);
+
+  function openBankForm() {
+    setBankName(bankDetails?.bankName ?? "");
+    setAccountNumber(bankDetails?.accountNumber ?? "");
+    setBankError(null);
+    setBankFormOpen(true);
+  }
+
+  async function saveBankDetails() {
+    if (!token) return;
+    if (!bankName) { setBankError("Select your bank."); return; }
+    if (!ACCOUNT_NUMBER_RE.test(accountNumber)) {
+      setBankError("Enter a valid account number (digits only, 6–20 characters).");
+      return;
+    }
     setBankSaving(true);
+    setBankError(null);
     try {
       const res = await fetch("/api/users/bank-details", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ bankName, accountNumber }),
       });
-      if (res.ok) onBankDetailsAdded?.();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setBankError(data.error ?? "Failed to save."); return; }
+      onBankDetailsSaved?.({ bankName, accountNumber, accountHolderName: user.name });
+      setBankFormOpen(false);
     } finally {
       setBankSaving(false);
     }
@@ -420,36 +446,66 @@ function ProfileTab({
 
       {/* Payment details */}
       <Section title="Payment details">
-        <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"16px 18px", display:"flex", flexDirection:"column", gap:8 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:40, height:40, borderRadius:10, background:"var(--pale-grey)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <Ic d={IC.credit} size={18} style={{ color:"var(--black)" }}/>
+        {!bankFormOpen ? (
+          <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"16px 18px", display:"flex", flexDirection:"column", gap:8 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                <div style={{ width:40, height:40, borderRadius:10, background: bankDetails ? "var(--green-soft)" : "var(--pale-grey)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <Ic d={IC.credit} size={18} style={{ color: bankDetails ? "var(--green)" : "var(--black)" }}/>
+                </div>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:600 }}>{bankDetails ? bankDetails.bankName : "Not added yet"}</div>
+                  {bankDetails && (
+                    <div style={{ fontSize:13, color:"var(--warm-grey)", fontVariantNumeric:"tabular-nums" }}>
+                      {bankDetails.accountNumber} · {bankDetails.accountHolderName}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize:14, fontWeight:600 }}>{bankDetailsAdded ? user.bankName : "Not added yet"}</div>
-                {bankDetailsAdded && (
-                  <div style={{ fontSize:13, color:"var(--warm-grey)", fontVariantNumeric:"tabular-nums" }}>{user.bankAccount}</div>
-                )}
-              </div>
+              <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={openBankForm}>
+                <Ic d={IC.edit} size={14}/> {bankDetails ? "Update" : "Add now"}
+              </button>
             </div>
-            <button
-              className="lk-btn lk-btn--ghost lk-btn--sm"
-              disabled={bankSaving || bankDetailsAdded}
-              onClick={addBankDetails}
-            >
-              {bankDetailsAdded
-                ? <><Ic d={IC.check} size={14}/> Added</>
-                : bankSaving
-                  ? "Saving…"
-                  : <><Ic d={IC.edit} size={14}/> Add now</>}
-            </button>
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", background:"var(--pale-grey)", borderRadius:10 }}>
+              <Ic d={IC.shield} size={14} style={{ color:"var(--warm-grey)", flexShrink:0 }}/>
+              <span style={{ fontSize:12, color:"var(--warm-grey)", lineHeight:1.4 }}>Earnings are paid out via DuitNow within 3 business days of job completion.</span>
+            </div>
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", background:"var(--pale-grey)", borderRadius:10 }}>
-            <Ic d={IC.shield} size={14} style={{ color:"var(--warm-grey)", flexShrink:0 }}/>
-            <span style={{ fontSize:12, color:"var(--warm-grey)", lineHeight:1.4 }}>Earnings are paid out via DuitNow within 3 business days of job completion.</span>
+        ) : (
+          <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"18px 20px", display:"flex", flexDirection:"column", gap:14 }}>
+            <EditField label="Account holder name">
+              <input className="lk-input" value={user.name} disabled style={{ borderRadius:12, opacity:0.6, cursor:"not-allowed" }}/>
+              <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:4 }}>
+                Payouts can only be made to an account in your own registered name.
+              </div>
+            </EditField>
+            <EditField label="Bank">
+              <select
+                className="lk-input" value={bankName}
+                onChange={e => setBankName(e.target.value)}
+                style={{ borderRadius:12 }}
+              >
+                <option value="" disabled>Select your bank</option>
+                {MALAYSIAN_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </EditField>
+            <EditField label="Account number">
+              <input
+                className="lk-input" value={accountNumber} inputMode="numeric"
+                onChange={e => setAccountNumber(e.target.value.replace(/\D/g, ""))}
+                placeholder="1234567890"
+                style={{ borderRadius:12, fontVariantNumeric:"tabular-nums" }}
+              />
+            </EditField>
+            {bankError && <p style={{ color:"var(--red)", fontSize:12.5, margin:0 }}>{bankError}</p>}
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+              <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={() => setBankFormOpen(false)}>Cancel</button>
+              <button className="lk-btn lk-btn--sm" disabled={bankSaving} onClick={saveBankDetails}>
+                {bankSaving ? "Saving…" : <><Ic d={IC.check} size={14}/> Save</>}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </Section>
 
       {/* Notifications */}
@@ -840,13 +896,26 @@ interface SettingsProps {
   userPhone?: string;
   onNameChange?: (n: string) => void;
   token?: string;
-  bankDetailsAdded?: boolean;
-  onBankDetailsAdded?: () => void;
+  bankDetails?: BankDetails | null;
+  onBankDetailsSaved?: (d: BankDetails) => void;
   initialTab?: SettingsTab;
 }
-export default function Settings({ onClose, onSignOut, token, bankDetailsAdded, onBankDetailsAdded, initialTab }: SettingsProps) {
+function initialsFrom(name: string): string {
+  return name.split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+
+export default function Settings({ onClose, onSignOut, token, userName, userPhone, bankDetails, onBankDetailsSaved, initialTab }: SettingsProps) {
   const [tab, setTab]   = useState<SettingsTab>(initialTab ?? "profile");
-  const [user, setUser] = useState<User>({ ...INIT_USER });
+  // The rest of this profile (rating, job count, availability, etc.) is
+  // still mock data — see docs/PRD.md — but name/phone are real, and the
+  // bank details form below depends on the real name to enforce that a
+  // payout account can only ever be registered in the logged-in user's
+  // own name.
+  const [user, setUser] = useState<User>(() => ({
+    ...INIT_USER,
+    ...(userName  ? { name: userName, initials: initialsFrom(userName) } : {}),
+    ...(userPhone ? { phone: userPhone } : {}),
+  }));
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:"var(--off-white)" }}>
@@ -864,7 +933,7 @@ export default function Settings({ onClose, onSignOut, token, bankDetailsAdded, 
             {tab==="profile"  && (
               <ProfileTab
                 user={user} setUser={setUser} onSignOut={onSignOut}
-                token={token} bankDetailsAdded={bankDetailsAdded} onBankDetailsAdded={onBankDetailsAdded}
+                token={token} bankDetails={bankDetails} onBankDetailsSaved={onBankDetailsSaved}
               />
             )}
             {tab==="history"  && <HistoryTab/>}
