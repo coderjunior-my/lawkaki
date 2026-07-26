@@ -433,15 +433,22 @@ CREATE INDEX fee_transactions_payment_id_idx ON fee_transactions (payment_id);
 -- =============================================================================
 -- Real bank details — added 2026-07-29
 -- Replaces the earlier bank_details_added placeholder flag with the actual
--- data it was standing in for. The account holder is always the logged-in
--- user themselves — there's deliberately no separate "account holder name"
--- column; the API always writes/reads it as users.name, so a lawyer can
--- only ever register a bank account in their own name, never a third
--- party's. bank_details_added is now derived (bank_account_number IS NOT
--- NULL), not stored, so it can't drift from the real data.
+-- data it was standing in for. bank_details_added is now derived
+-- (bank_account_number IS NOT NULL), not stored, so it can't drift from
+-- the real data.
 -- =============================================================================
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS bank_name           VARCHAR(100),
   ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(30);
 
 ALTER TABLE users DROP COLUMN IF EXISTS bank_details_added;
+
+-- =============================================================================
+-- Bank account holder name — added 2026-07-29
+-- Originally this was locked to users.name (account must be the logged-in
+-- user's own) — relaxed per product decision: any account holder name is
+-- allowed (e.g. paying into a spouse's or firm's account), so it needs its
+-- own column instead of being derived.
+-- =============================================================================
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS bank_account_holder_name VARCHAR(200);

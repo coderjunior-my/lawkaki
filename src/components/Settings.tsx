@@ -238,21 +238,26 @@ function ProfileTab({
   const [saved, setSaved]         = useState(false);
   const fileRef                   = useRef<HTMLInputElement>(null);
 
-  const [bankFormOpen, setBankFormOpen]     = useState(false);
-  const [bankName, setBankName]             = useState("");
-  const [accountNumber, setAccountNumber]   = useState("");
-  const [bankSaving, setBankSaving]         = useState(false);
-  const [bankError, setBankError]           = useState<string | null>(null);
+  const [bankFormOpen, setBankFormOpen]         = useState(false);
+  const [bankName, setBankName]                 = useState("");
+  const [accountNumber, setAccountNumber]       = useState("");
+  const [accountHolderName, setAccountHolderName] = useState("");
+  const [bankSaving, setBankSaving]             = useState(false);
+  const [bankError, setBankError]               = useState<string | null>(null);
 
   function openBankForm() {
     setBankName(bankDetails?.bankName ?? "");
     setAccountNumber(bankDetails?.accountNumber ?? "");
+    // Defaults to the logged-in user's own name, but it's editable — any
+    // account holder (e.g. a spouse's or firm's) is allowed.
+    setAccountHolderName(bankDetails?.accountHolderName ?? user.name);
     setBankError(null);
     setBankFormOpen(true);
   }
 
   async function saveBankDetails() {
     if (!token) return;
+    if (!accountHolderName.trim()) { setBankError("Enter the account holder's name."); return; }
     if (!bankName) { setBankError("Select your bank."); return; }
     if (!ACCOUNT_NUMBER_RE.test(accountNumber)) {
       setBankError("Enter a valid account number (digits only, 6–20 characters).");
@@ -264,11 +269,11 @@ function ProfileTab({
       const res = await fetch("/api/users/bank-details", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ bankName, accountNumber }),
+        body: JSON.stringify({ bankName, accountNumber, accountHolderName: accountHolderName.trim() }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setBankError(data.error ?? "Failed to save."); return; }
-      onBankDetailsSaved?.({ bankName, accountNumber, accountHolderName: user.name });
+      onBankDetailsSaved?.({ bankName, accountNumber, accountHolderName: accountHolderName.trim() });
       setBankFormOpen(false);
     } finally {
       setBankSaving(false);
@@ -474,10 +479,12 @@ function ProfileTab({
         ) : (
           <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"18px 20px", display:"flex", flexDirection:"column", gap:14 }}>
             <EditField label="Account holder name">
-              <input className="lk-input" value={user.name} disabled style={{ borderRadius:12, opacity:0.6, cursor:"not-allowed" }}/>
-              <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:4 }}>
-                Payouts can only be made to an account in your own registered name.
-              </div>
+              <input
+                className="lk-input" value={accountHolderName}
+                onChange={e => setAccountHolderName(e.target.value)}
+                placeholder="Name on the bank account"
+                style={{ borderRadius:12 }}
+              />
             </EditField>
             <EditField label="Bank">
               <select
@@ -907,10 +914,9 @@ function initialsFrom(name: string): string {
 export default function Settings({ onClose, onSignOut, token, userName, userPhone, bankDetails, onBankDetailsSaved, initialTab }: SettingsProps) {
   const [tab, setTab]   = useState<SettingsTab>(initialTab ?? "profile");
   // The rest of this profile (rating, job count, availability, etc.) is
-  // still mock data — see docs/PRD.md — but name/phone are real, and the
-  // bank details form below depends on the real name to enforce that a
-  // payout account can only ever be registered in the logged-in user's
-  // own name.
+  // still mock data — see docs/PRD.md — but name/phone are real, since the
+  // bank details form below uses the real name as the account holder
+  // name's default (editable — any account holder is allowed).
   const [user, setUser] = useState<User>(() => ({
     ...INIT_USER,
     ...(userName  ? { name: userName, initials: initialsFrom(userName) } : {}),

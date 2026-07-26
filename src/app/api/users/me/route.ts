@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
   const { data: user, error } = await supabase
     .from("users")
-    .select("role, name, bank_name, bank_account_number")
+    .select("role, bank_name, bank_account_number, bank_account_holder_name")
     .eq("id", userId)
     .single();
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     bankDetails: user.bank_account_number ? {
       bankName:          user.bank_name,
       accountNumber:     user.bank_account_number,
-      accountHolderName: user.name, // always the logged-in user — see schema.sql
+      accountHolderName: user.bank_account_holder_name,
     } : null,
   });
 }
