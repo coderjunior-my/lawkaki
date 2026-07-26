@@ -9,6 +9,7 @@ import ReminderPopup from "@/components/ReminderPopup";
 import { PickedJob, StatusFilter, getTodayISO, parseTimeToMins } from "@/lib/pickedJobs";
 import TaskTracker from "@/components/TaskTracker";
 import Settings from "@/components/Settings";
+import CoachmarkTour from "@/components/CoachmarkTour";
 
 /* ============================================================
    Icon — inline Lucide-style SVGs
@@ -170,7 +171,7 @@ function NotificationBell({ token = "" }: { token?: string }) {
   }
 
   return (
-    <div style={{ position: "relative" }}>
+    <div id="lk-coach-bell" style={{ position: "relative" }}>
       <button
         onClick={() => { const next = !open; setOpen(next); if (next) refresh(); }}
         style={iconBtnStyle}
@@ -347,6 +348,7 @@ function TopNav({
 
       {/* Tasks — jump straight to the task tracker */}
       <button
+        id="lk-coach-tasks"
         onClick={onTasks}
         style={tasksActive ? iconBtnActiveStyle : iconBtnStyle}
         aria-label="Tasks"
@@ -360,7 +362,7 @@ function TopNav({
       <NotificationBell token={token} />
 
       {/* Settings */}
-      <button onClick={onSettings} style={iconBtnStyle} aria-label="Settings">
+      <button id="lk-coach-settings" onClick={onSettings} style={iconBtnStyle} aria-label="Settings">
         <Icon d={I.gear} size={18} />
       </button>
     </header>
@@ -411,6 +413,7 @@ function FilterBar({
 }) {
   return (
     <div
+      id="lk-coach-filters"
       style={{
         padding: "14px 18px",
         background: "#FFFFFF",
@@ -1259,6 +1262,7 @@ function MapArea({
 
       {/* Post a job FAB */}
       <button
+        id="lk-coach-post"
         onClick={onPost}
         className="lk-btn lk-btn--accent"
         style={{
@@ -1935,6 +1939,8 @@ export default function Dashboard({
       </main>
 
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
+
+      <CoachmarkTour active={view === "browse" && !showSettings && !showPostSheet} />
 
       {showPostSheet && (
         <PostJobSheet
