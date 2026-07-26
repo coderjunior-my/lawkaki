@@ -342,3 +342,20 @@ ALTER TABLE jobs
 --        body    := '{}'::jsonb
 --      ) $$
 -- );
+
+-- =============================================================================
+-- Widen users.firm_state to all states — added 2026-07-26
+-- firm_state was still constrained to the original KL/Selangor-only pilot
+-- scope, but the firm directory (src/lib/lawFirms.ts) expanded to all 13
+-- states + 3 federal territories a while back. Registration for any firm
+-- outside KL/Selangor was silently failing this CHECK constraint — caught by
+-- testing a live signup end-to-end during the first deployment. Widen it to
+-- match MalaysianState in src/lib/types.ts.
+-- =============================================================================
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_firm_state_check;
+ALTER TABLE users ADD CONSTRAINT users_firm_state_check
+  CHECK (firm_state IN (
+    'Johor', 'Kedah', 'Kelantan', 'Kuala Lumpur', 'Labuan', 'Melaka',
+    'Negeri Sembilan', 'Pahang', 'Perak', 'Perlis', 'Pulau Pinang',
+    'Putrajaya', 'Sabah', 'Sarawak', 'Selangor', 'Terengganu'
+  ));
