@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, CSSProperties } from "react";
+import { useState, useRef, useEffect, useCallback, CSSProperties } from "react";
+import { PLATFORM_BANK_DETAILS as PLATFORM_BANK } from "@/lib/billing";
 
 /* ============================================================
    Icons (Lucide-style, outlined, 2px stroke)
@@ -37,12 +38,14 @@ const IC = {
   exit:      "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9",
   lock:      "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2z M7 11V7a5 5 0 0 1 10 0v4",
   cal:       "M16 2v4M8 2v4M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+  download:  "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
+  alert:     "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01",
 };
 
 /* ============================================================
    Types
    ============================================================ */
-type SettingsTab  = "profile" | "history";
+type SettingsTab  = "profile" | "history" | "billing";
 type HistFilter   = "all" | "paid" | "pending" | "overdue";
 type UserRole     = "post" | "pick" | "both";
 type JobRole      = "picker" | "poster";
@@ -77,10 +80,12 @@ const DAY_LABELS: Record<string, string> = { mon:"Mon", tue:"Tue", wed:"Wed", th
 const TABS: { id: SettingsTab; label: string; icon: string | string[] }[] = [
   { id: "profile",  label: "Profile",     icon: IC.user },
   { id: "history",  label: "Job history", icon: IC.briefcase },
+  { id: "billing",  label: "Billing",     icon: IC.credit },
 ];
 const TAB_SUBS: Record<SettingsTab, string> = {
   profile:  "Manage your account details, availability, and preferences.",
   history:  "All your completed jobs and payment status.",
+  billing:  "Pay your platform fee and manage payment history.",
 };
 
 /* ============================================================
@@ -521,6 +526,272 @@ function HistoryTab() {
 }
 
 /* ============================================================
+   Billing tab — Poster → platform. Fee is RM0.00 today; the flow
+   (select, pay, review, history, export) is the point, not the amount.
+   ============================================================ */
+interface FeeTxn {
+  id: string; amount: number; status: "unpaid" | "paid";
+  dueAt: string; createdAt: string; paymentId: string | null; isDueNow: boolean;
+  job: { id: string; venue: string; docType: string; appointmentAt: string; area: string | null } | null;
+}
+interface BillingSummary { totalUnpaid: number; unpaidCount: number; thresholdExceeded: boolean; threshold: number }
+interface PastPayment {
+  id: string; method: string; totalAmount: number; reference: string | null;
+  status: "pending" | "confirmed" | "rejected"; submittedAt: string; reviewedAt: string | null;
+  transactions: { id: string; amount: number; venue: string | null; docType: string | null; appointmentAt: string | null }[];
+}
+
+function PaymentStatusBadge({ status }: { status: "pending" | "confirmed" | "rejected" }) {
+  const map = {
+    pending:   { label:"Pending review", bg:"var(--amber-soft)", fg:"#7A4A0F",    border:"var(--amber)" },
+    confirmed: { label:"Confirmed",      bg:"var(--green-soft)", fg:"var(--green)", border:"var(--green)" },
+    rejected:  { label:"Rejected",       bg:"var(--red-soft)",   fg:"var(--red)",   border:"var(--red)" },
+  } as const;
+  const s = map[status];
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:999, fontSize:11, fontWeight:700, background:s.bg, color:s.fg, border:`1px solid ${s.border}` }}>
+      <span style={{ width:5, height:5, borderRadius:999, background:s.fg }}/>{s.label}
+    </span>
+  );
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-MY", { day:"numeric", month:"short", year:"numeric" });
+}
+
+function BillingTab({ token }: { token?: string }) {
+  const [transactions, setTransactions] = useState<FeeTxn[]>([]);
+  const [summary, setSummary]           = useState<BillingSummary | null>(null);
+  const [payments, setPayments]         = useState<PastPayment[]>([]);
+  const [selected, setSelected]         = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting]     = useState(false);
+  const [toast, setToast]               = useState<string | null>(null);
+  const [expanded, setExpanded]         = useState<string | null>(null);
+  const [loading, setLoading]           = useState(true);
+
+  const refresh = useCallback(() => {
+    if (!token) { setLoading(false); return; }
+    Promise.all([
+      fetch("/api/billing/transactions", { headers:{ Authorization:`Bearer ${token}` } }).then(r => r.json()),
+      fetch("/api/billing/payments",     { headers:{ Authorization:`Bearer ${token}` } }).then(r => r.json()),
+    ]).then(([t, p]) => {
+      setTransactions(t.transactions ?? []);
+      setSummary(t.summary ?? null);
+      setPayments(p.payments ?? []);
+      // Drop any selected id that's no longer payable (paid, gone, or just
+      // submitted into a payment) rather than blindly clearing — a refresh
+      // shouldn't silently discard what the poster's already ticked.
+      const stillPayable = new Set<string>(
+        (t.transactions ?? []).filter((x: FeeTxn) => x.status === "unpaid" && !x.paymentId).map((x: FeeTxn) => x.id)
+      );
+      setSelected(prev => new Set(Array.from(prev).filter(id => stillPayable.has(id))));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Selectable = unpaid AND not already sitting in a pending payment. Once
+  // submitted, a transaction moves conceptually into "Payment history" —
+  // showing it as payable again here would let the same fee get
+  // double-submitted before the first attempt is even reviewed.
+  const payable      = transactions.filter(t => t.status === "unpaid" && !t.paymentId);
+  const awaitingReview = transactions.filter(t => t.status === "unpaid" && t.paymentId);
+  const selectedTotal = transactions.filter(t => selected.has(t.id)).reduce((s,t) => s+t.amount, 0);
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function submitPayment() {
+    if (!token || selected.size === 0) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/billing/payments", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ transactionIds: Array.from(selected), method:"bank_transfer" }),
+      });
+      if (res.ok) {
+        setToast("Payment submitted — we'll confirm once it's received.");
+        refresh();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setToast(body.error ?? "Failed to submit payment.");
+      }
+    } finally {
+      setSubmitting(false);
+      setTimeout(() => setToast(null), 3500);
+    }
+  }
+
+  async function exportCsv() {
+    if (!token) return;
+    const res = await fetch("/api/billing/export", { headers:{ Authorization:`Bearer ${token}` } });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `lawkaki-billing-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  if (loading) return <div style={{ padding:40, textAlign:"center", color:"var(--warm-grey)", fontSize:13 }}>Loading…</div>;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
+      {/* Summary */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <StatCard label="Outstanding balance" value={`RM ${summary?.totalUnpaid.toFixed(2) ?? "0.00"}`} accent={summary?.thresholdExceeded ? "var(--red)" : "var(--black)"}/>
+        <StatCard label="Unpaid transactions" value={String(summary?.unpaidCount ?? 0)} accent="var(--black)"/>
+      </div>
+
+      {summary && summary.thresholdExceeded && (
+        <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:"var(--red-soft)", border:"1px solid var(--red)", borderRadius:12 }}>
+          <Ic d={IC.alert} size={18} style={{ color:"var(--red)", flexShrink:0 }}/>
+          <span style={{ fontSize:13, fontWeight:600, color:"var(--red)" }}>
+            Your outstanding balance is over RM {summary.threshold.toFixed(2)} — all unpaid transactions below are due now, regardless of their individual due date.
+          </span>
+        </div>
+      )}
+
+      {/* Transactions to pay */}
+      <Section title="Transactions">
+        {payable.length === 0 && awaitingReview.length === 0 ? (
+          <div style={{ padding:32, textAlign:"center", color:"var(--warm-grey)", fontSize:13, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14 }}>
+            Nothing outstanding. You&apos;re all paid up.
+          </div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {payable.length > 0 && (
+              <div style={{ display:"flex", flexDirection:"column", gap:0, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, overflow:"hidden" }}>
+                {payable.map((t, idx) => (
+                  <label key={t.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 18px", borderBottom: idx<payable.length-1 ? "1px solid var(--pale-grey)" : "none", cursor:"pointer" }}>
+                    <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} style={{ width:16, height:16, flexShrink:0, accentColor:"var(--black)" }}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:14, fontWeight:700, letterSpacing:"-0.01em", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.job?.venue ?? "Job removed"}</div>
+                      <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:2 }}>{t.job?.docType} · Due {fmtDate(t.dueAt)}</div>
+                    </div>
+                    <PaymentBadge status={t.isDueNow ? "overdue" : "pending"}/>
+                    <div style={{ width:80, textAlign:"right", fontSize:15, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>RM {t.amount.toFixed(2)}</div>
+                  </label>
+                ))}
+              </div>
+            )}
+            {awaitingReview.length > 0 && (
+              <div style={{ fontSize:12, color:"var(--warm-grey)", padding:"0 4px" }}>
+                {awaitingReview.length} more awaiting confirmation — see Payment history below.
+              </div>
+            )}
+          </div>
+        )}
+      </Section>
+
+      {/* Pay selected */}
+      {payable.length > 0 && (
+        <Section title="Pay">
+          <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, padding:"18px 20px", display:"flex", flexDirection:"column", gap:16 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <span style={{ fontSize:13, fontWeight:600, color:"var(--warm-grey)" }}>Selected total</span>
+              <span style={{ fontSize:24, fontWeight:800, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.02em" }}>RM {selectedTotal.toFixed(2)}</span>
+            </div>
+
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:"var(--warm-grey)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Payment method</div>
+              <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", border:"2px solid var(--black)", borderRadius:10 }}>
+                <Ic d={IC.credit} size={16}/>
+                <span style={{ fontSize:13, fontWeight:600, flex:1 }}>Bank transfer</span>
+                <Ic d={IC.check} size={14}/>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", border:"1px solid var(--hair)", borderRadius:10, opacity:0.5 }}>
+                <Ic d={IC.credit} size={16}/>
+                <span style={{ fontSize:13, fontWeight:600, flex:1 }}>Payment gateway</span>
+                <span style={{ fontSize:11, fontWeight:700, color:"var(--warm-grey)", textTransform:"uppercase", letterSpacing:"0.04em" }}>Coming soon</span>
+              </div>
+            </div>
+
+            <div style={{ padding:"12px 14px", background:"var(--pale-grey)", borderRadius:10, display:"flex", flexDirection:"column", gap:4 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"var(--warm-grey)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Transfer to</div>
+              <div style={{ fontSize:13, fontWeight:600 }}>{PLATFORM_BANK.bankName} · {PLATFORM_BANK.accountName}</div>
+              <div style={{ fontSize:13, fontVariantNumeric:"tabular-nums", color:"var(--warm-grey)" }}>{PLATFORM_BANK.accountNumber}</div>
+              <div style={{ fontSize:11.5, color:"var(--warm-grey)", marginTop:4 }}>{PLATFORM_BANK.reference}</div>
+            </div>
+
+            <button
+              className="lk-btn lk-btn--accent"
+              disabled={selected.size === 0 || submitting}
+              onClick={submitPayment}
+              style={{ width:"100%" }}
+            >
+              {submitting ? "Submitting…" : `I've made this payment — RM ${selectedTotal.toFixed(2)}`}
+            </button>
+            {toast && <div style={{ fontSize:12.5, color:"var(--warm-grey)", textAlign:"center" }}>{toast}</div>}
+          </div>
+        </Section>
+      )}
+
+      {/* Payment history */}
+      <Section
+        title="Payment history"
+        action={payments.length > 0 ? (
+          <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={exportCsv}>
+            <Ic d={IC.download} size={14}/> Export CSV
+          </button>
+        ) : undefined}
+      >
+        {payments.length === 0 ? (
+          <div style={{ padding:32, textAlign:"center", color:"var(--warm-grey)", fontSize:13, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14 }}>
+            No payments made yet.
+          </div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {payments.map(p => {
+              const isOpen = expanded === p.id;
+              return (
+                <div key={p.id} style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, overflow:"hidden" }}>
+                  <button
+                    onClick={() => setExpanded(isOpen ? null : p.id)}
+                    style={{ width:"100%", display:"flex", alignItems:"center", gap:14, padding:"14px 18px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left", fontFamily:"inherit" }}
+                  >
+                    <Ic d={isOpen ? IC.chevD : IC.chevR} size={14} style={{ color:"var(--warm-grey)", flexShrink:0 }}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13.5, fontWeight:700 }}>{fmtDate(p.submittedAt)}</div>
+                      <div style={{ fontSize:11.5, color:"var(--warm-grey)", marginTop:2 }}>{p.transactions.length} case{p.transactions.length!==1?"s":""} · Bank transfer</div>
+                    </div>
+                    <PaymentStatusBadge status={p.status}/>
+                    <div style={{ width:80, textAlign:"right", fontSize:15, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>RM {p.totalAmount.toFixed(2)}</div>
+                  </button>
+                  {isOpen && (
+                    <div style={{ borderTop:"1px solid var(--pale-grey)" }}>
+                      {p.transactions.map((t, idx) => (
+                        <div key={t.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"10px 18px 10px 46px", borderBottom: idx<p.transactions.length-1 ? "1px solid var(--pale-grey)" : "none" }}>
+                          <div style={{ flex:1, minWidth:0, fontSize:12.5 }}>
+                            {t.venue ?? "Job removed"} <span style={{ color:"var(--warm-grey)" }}>· {t.docType}</span>
+                          </div>
+                          <div style={{ fontSize:12.5, fontVariantNumeric:"tabular-nums", fontWeight:600 }}>RM {t.amount.toFixed(2)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+/* ============================================================
    Layout
    ============================================================ */
 function SettingsNav({ onBack, initials }: { onBack?: () => void; initials: string }) {
@@ -571,9 +842,10 @@ interface SettingsProps {
   token?: string;
   bankDetailsAdded?: boolean;
   onBankDetailsAdded?: () => void;
+  initialTab?: SettingsTab;
 }
-export default function Settings({ onClose, onSignOut, token, bankDetailsAdded, onBankDetailsAdded }: SettingsProps) {
-  const [tab, setTab]   = useState<SettingsTab>("profile");
+export default function Settings({ onClose, onSignOut, token, bankDetailsAdded, onBankDetailsAdded, initialTab }: SettingsProps) {
+  const [tab, setTab]   = useState<SettingsTab>(initialTab ?? "profile");
   const [user, setUser] = useState<User>({ ...INIT_USER });
 
   return (
@@ -596,6 +868,7 @@ export default function Settings({ onClose, onSignOut, token, bankDetailsAdded, 
               />
             )}
             {tab==="history"  && <HistoryTab/>}
+            {tab==="billing"  && <BillingTab token={token}/>}
           </div>
         </main>
       </div>

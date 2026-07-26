@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { notifyConfirmation, notifyNewJob } from "@/lib/whatsapp";
 import { flags } from "@/lib/featureFlags";
 import { createNotification } from "@/lib/notifications";
+import { createFeeTransaction } from "@/lib/billing";
 
 export type ActionResult<T = void> =
   | { ok: true; data: T }
@@ -229,6 +230,7 @@ export async function completeJob(jobId: string, posterId: string): Promise<Acti
   if (job.poster_id !== posterId) return { ok: false, status: 403, error: "Not your job." };
   if (job.state !== "taken") return { ok: false, status: 409, error: "Only a taken job can be marked complete." };
   await supabase.from("jobs").update({ state: "completed", completed_at: new Date().toISOString() }).eq("id", jobId);
+  await createFeeTransaction(jobId, posterId);
   return { ok: true, data: undefined };
 }
 

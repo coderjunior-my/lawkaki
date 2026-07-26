@@ -34,3 +34,12 @@ export async function getUserIdFromToken(token: string): Promise<string | null> 
   if (new Date(data.expires_at) < new Date()) return null;
   return data.user_id as string;
 }
+
+// Admin accounts are provisioned out-of-band (no self-serve admin signup
+// exists) — this just checks the flag on an already-resolved user id.
+export async function requireAdmin(token: string | null | undefined): Promise<string | null> {
+  const userId = token ? await getUserIdFromToken(token) : null;
+  if (!userId) return null;
+  const { data } = await supabase.from("users").select("is_admin").eq("id", userId).single();
+  return data?.is_admin ? userId : null;
+}

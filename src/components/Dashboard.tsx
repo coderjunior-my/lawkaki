@@ -1662,6 +1662,8 @@ export default function Dashboard({
   // null = not loaded yet — deliberately distinct from false, so the
   // critical notice never flashes on screen before we actually know.
   const [bankDetailsAdded, setBankDetailsAdded] = useState<boolean | null>(null);
+  const [billingDueNow, setBillingDueNow] = useState(0);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"profile" | "history" | "billing">("profile");
 
   const refreshBrowseJobs = useCallback(() => {
     return fetch("/api/jobs", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
@@ -1683,6 +1685,16 @@ export default function Dashboard({
       fetch("/api/users/me", { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.json())
         .then((d) => setBankDetailsAdded(Boolean(d.bankDetailsAdded)))
+        .catch(() => {});
+
+      fetch("/api/billing/transactions", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((d) => {
+          const dueNow = (d.transactions ?? [])
+            .filter((t: { isDueNow: boolean; status: string }) => t.status === "unpaid" && t.isDueNow)
+            .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+          setBillingDueNow(dueNow);
+        })
         .catch(() => {});
     }
   }, [token, refreshBrowseJobs]);
@@ -1765,7 +1777,15 @@ export default function Dashboard({
         <CriticalNotice
           message="Add your bank details so you can get paid for jobs you pick up."
           actionLabel="Add bank details"
-          onAction={() => setShowSettings(true)}
+          onAction={() => { setSettingsInitialTab("profile"); setShowSettings(true); }}
+        />
+      )}
+
+      {billingDueNow > 0 && (
+        <CriticalNotice
+          message={`You have RM ${billingDueNow.toFixed(2)} in platform fees due now.`}
+          actionLabel="Pay now"
+          onAction={() => { setSettingsInitialTab("billing"); setShowSettings(true); }}
         />
       )}
 
@@ -1805,6 +1825,7 @@ export default function Dashboard({
                   }}
                   bankDetailsAdded={Boolean(bankDetailsAdded)}
                   onBankDetailsAdded={() => setBankDetailsAdded(true)}
+                  initialTab={settingsInitialTab}
                 />
               ) : (
                 <>

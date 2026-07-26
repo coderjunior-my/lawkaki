@@ -371,3 +371,61 @@ ALTER TABLE users ADD CONSTRAINT users_firm_state_check
 -- =============================================================================
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS bank_details_added BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- =============================================================================
+-- Platform billing (Poster → platform) — added 2026-07-28
+-- Posters pay a platform fee to Law Kaki itself (separate from the
+-- indicative commission they pay a picker directly). The fee is RM0.00
+-- today — this is the infrastructure for turning it on later, per
+-- CLAUDE.md's Phase 2 "small listing fee from Poster" monetisation note.
+--
+-- One fee_transactions row per COMPLETED job (success-fee model, not a
+-- listing fee — nothing is owed for a job that's cancelled or never
+-- picked up). due_at is set 7 days out at creation; separately, if a
+-- poster's total unpaid balance exceeds the RM1,000 threshold, ALL of
+-- their unpaid transactions become payable immediately regardless of
+-- individual due dates — that's computed at query time (SUM unpaid),
+-- not stored, so it always reflects the live balance.
+--
+-- No real payment gateway in Phase 1, so settlement is manual bank
+-- transfer: a poster selects transactions, submits a platform_payments
+-- row (status 'pending'), and an admin (users.is_admin) confirms or
+-- rejects it against what actually landed in the account. Confirming
+-- flips the covered transactions to 'paid'; rejecting clears
+-- payment_id so the poster can resubmit.
+-- =============================================================================
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE platform_payments (
+  id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  poster_id      UUID         NOT NULL REFERENCES users (id),
+  method         VARCHAR(20)  NOT NULL DEFAULT 'bank_transfer'
+                   CHECK (method IN ('bank_transfer', 'payment_gateway')),
+  total_amount   INT          NOT NULL CHECK (total_amount >= 0),
+  reference      VARCHAR(200),
+  status         VARCHAR(10)  NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending', 'confirmed', 'rejected')),
+  submitted_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  reviewed_at    TIMESTAMPTZ,
+  reviewed_by    UUID         REFERENCES users (id)
+);
+
+CREATE INDEX platform_payments_poster_id_idx ON platform_payments (poster_id);
+CREATE INDEX platform_payments_status_idx    ON platform_payments (status);
+
+CREATE TABLE fee_transactions (
+  id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id       UUID         NOT NULL UNIQUE REFERENCES jobs (id),
+  poster_id    UUID         NOT NULL REFERENCES users (id),
+  amount       INT          NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  status       VARCHAR(10)  NOT NULL DEFAULT 'unpaid'
+                 CHECK (status IN ('unpaid', 'paid')),
+  due_at       TIMESTAMPTZ  NOT NULL,
+  payment_id   UUID         REFERENCES platform_payments (id),
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX fee_transactions_poster_id_idx  ON fee_transactions (poster_id);
+CREATE INDEX fee_transactions_status_idx     ON fee_transactions (status);
+CREATE INDEX fee_transactions_payment_id_idx ON fee_transactions (payment_id);
