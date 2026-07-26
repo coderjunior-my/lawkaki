@@ -64,16 +64,104 @@ export async function notifyPosterOfInterest(opts: {
   docType:         string;
   date:            string;
   time:            string;
+  confirmCode:     string;
 }): Promise<void> {
   const msg = [
     `Hi ${opts.posterFirstName} — ${opts.pickerName} wants to cover your job.`,
     `${opts.venue}`,
     `${opts.docType} · ${opts.time}, ${opts.date}`,
     ``,
-    `Open Law Kaki to confirm them.`,
+    `Reply CONFIRM ${opts.confirmCode} to confirm them, or open Law Kaki.`,
   ].join("\n");
 
   await send(opts.posterPhone, msg);
+}
+
+// ─── Interest reminders ────────────────────────────────────────────────────
+// Sent by the cron sweep at day 3 and day 7 while an interest is still
+// pending. At day 9 the interest expires without a further message.
+
+export async function notifyInterestReminder(opts: {
+  posterPhone:     string;
+  posterFirstName: string;
+  pickerName:      string;
+  venue:           string;
+  docType:         string;
+  date:            string;
+  time:            string;
+  confirmCode:     string;
+  stage:           1 | 2;
+}): Promise<void> {
+  const nudge = opts.stage === 1
+    ? `${opts.pickerName} is still waiting on your confirmation.`
+    : `Last call — ${opts.pickerName}'s interest expires soon if you don't respond.`;
+
+  const msg = [
+    `Hi ${opts.posterFirstName} — ${nudge}`,
+    `${opts.venue}`,
+    `${opts.docType} · ${opts.time}, ${opts.date}`,
+    ``,
+    `Reply CONFIRM ${opts.confirmCode} to confirm them, or open Law Kaki.`,
+  ].join("\n");
+
+  await send(opts.posterPhone, msg);
+}
+
+// ─── New job broadcast ─────────────────────────────────────────────────────
+// Sent to every eligible Picker when a Poster creates a job.
+
+export async function notifyNewJob(opts: {
+  pickerPhone: string;
+  venue:       string;
+  docType:     string;
+  area?:       string;
+  fee:         number;
+  date:        string;
+  time:        string;
+}): Promise<void> {
+  const headline = opts.area ? `New job in ${opts.area}.` : "New job posted.";
+  const msg = [
+    `${headline} RM${opts.fee}.`,
+    `${opts.venue}`,
+    `${opts.docType} · ${opts.time}, ${opts.date}`,
+    ``,
+    `Open Law Kaki to pick it up.`,
+  ].join("\n");
+
+  await send(opts.pickerPhone, msg);
+}
+
+// ─── Appointment reminders ─────────────────────────────────────────────────
+// Sent to both parties on a confirmed job, 2 hours and 30 minutes before
+// the appointment.
+
+export async function notifyAppointmentReminder(opts: {
+  pickerPhone:     string;
+  pickerFirstName: string;
+  posterPhone:     string;
+  posterFirstName: string;
+  venue:           string;
+  docType:         string;
+  time:            string;
+  stage:           "2h" | "30m";
+}): Promise<void> {
+  const lead = opts.stage === "2h" ? "2 hrs to go." : "30 mins to go.";
+
+  await send(
+    opts.pickerPhone,
+    [
+      `${lead} Time to head to ${opts.venue}.`,
+      `${opts.docType} · ${opts.time}`,
+    ].join("\n"),
+  );
+
+  await send(
+    opts.posterPhone,
+    [
+      `${lead} Your kaki is on the way.`,
+      `${opts.pickerFirstName} is covering ${opts.venue}, ${opts.time}.`,
+    ].join("\n"),
+  );
 }
 
 // ─── Confirmation notifications ───────────────────────────────────────────────

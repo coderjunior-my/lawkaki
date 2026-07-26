@@ -288,6 +288,21 @@ function WhatsAppDot() {
 /* ============================================================
    Docs status helpers
    ============================================================ */
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+const REVIEW_MAX_WORDS = 1000;
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
+}
+
+function capWords(text: string, maxWords: number): string {
+  return countWords(text) <= maxWords ? text : text.trim().split(/\s+/).slice(0, maxWords).join(" ");
+}
+
 function docsLabel(s: DocsStatus)  { return { dispatched:"Documents dispatched", pending:"Documents pending", "not-required":"No documents needed" }[s]; }
 function docsIcon(s: DocsStatus)   { return { dispatched:IC.check, pending:IC.cal, "not-required":IC.file }[s]; }
 function docsColor(s: DocsStatus)  { return { dispatched:"var(--green)", pending:"var(--amber)", "not-required":"var(--warm-grey)" }[s]; }
@@ -311,7 +326,11 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
     { id:"both" as UserRole, label:"Both",       desc:"Post and pick as needed" },
   ];
 
-  const save = () => { setUser(draft); setEditing(false); setSaved(true); setTimeout(() => setSaved(false), 2400); };
+  const emailError = draft.email.length > 0 && !isValidEmail(draft.email);
+  const save = () => {
+    if (!isValidEmail(draft.email)) return;
+    setUser(draft); setEditing(false); setSaved(true); setTimeout(() => setSaved(false), 2400);
+  };
   const cancel = () => { setDraft({ ...user }); setEditing(false); };
 
   return (
@@ -379,7 +398,7 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
         <Section title="Edit profile" action={
           <div style={{ display:"flex", gap:8 }}>
             <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={cancel}>Cancel</button>
-            <button className="lk-btn lk-btn--sm" onClick={save}><Ic d={IC.check} size={14}/> Save</button>
+            <button className="lk-btn lk-btn--sm" disabled={emailError} onClick={save}><Ic d={IC.check} size={14}/> Save</button>
           </div>
         }>
           <EditField label="Full name">
@@ -390,8 +409,14 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
             <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:4 }}>To change your number, go to Security below.</div>
           </EditField>
           <EditField label="Law firm email">
-            <input className="lk-input" value={draft.email} onChange={e => setDraft({...draft, email:e.target.value})} style={{ borderRadius:12 }}/>
-            <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:4 }}>Used for verification only. We won&apos;t send anything here.</div>
+            <input
+              className="lk-input" type="email" value={draft.email}
+              onChange={e => setDraft({...draft, email:e.target.value})}
+              style={{ borderRadius:12, borderColor: emailError ? "var(--red)" : undefined }}
+            />
+            {emailError
+              ? <div style={{ fontSize:12, color:"var(--red)", marginTop:4 }}>Enter a valid email address.</div>
+              : <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:4 }}>Used for verification only. We won&apos;t send anything here.</div>}
           </EditField>
           <EditField label="Law firm">
             <div style={{ position:"relative" }}>
@@ -828,12 +853,15 @@ function ReviewsTab() {
                   </div>
                   <div>
                     <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>Comments <span style={{ color:"var(--warm-grey)", fontWeight:400 }}>(optional)</span></div>
-                    <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}
+                    <textarea value={comment} onChange={e => setComment(capWords(e.target.value, REVIEW_MAX_WORDS))} rows={3}
                       placeholder={r.role==="poster" ? "e.g. Arrived on time, thorough with the documents. Would use again." : "e.g. Clear brief, documents were ready on time. Smooth job."}
                       style={{ width:"100%", padding:"12px 14px", background:"#FFF", border:"1.5px solid var(--hair)", borderRadius:10, resize:"vertical" as const, fontFamily:"inherit", fontSize:14, fontWeight:500, color:"var(--black)", outline:"none", minHeight:80, lineHeight:1.5 }}
                       onFocus={e => { e.target.style.borderColor="var(--black)"; e.target.style.boxShadow="0 0 0 4px rgba(15,31,51,0.06)"; }}
                       onBlur={e => { e.target.style.borderColor="var(--hair)"; e.target.style.boxShadow="none"; }}
                     />
+                    <div style={{ fontSize:11, color:"var(--warm-grey)", textAlign:"right", marginTop:4 }}>
+                      {countWords(comment)}/{REVIEW_MAX_WORDS} words
+                    </div>
                   </div>
                   <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
                     <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={() => setActiveId(null)}>Cancel</button>
@@ -917,11 +945,6 @@ function SettingsNav({ onBack, initials }: { onBack?: () => void; initials: stri
       <a href="/" style={{ display:"flex", alignItems:"center", gap:12, textDecoration:"none", flexShrink:0 }}>
         <svg width="32" height="40" viewBox="0 0 80 100" fill="none">
           <path d="M40 4 C 60.4 4 76 19.6 76 40 C 76 53.6 67.5 66 56 76 L 40 96 L 24 76 C 12.5 66 4 53.6 4 40 C 4 19.6 19.6 4 40 4 Z" fill="#0F1F33"/>
-          <g fill="#FAF7F2" transform="translate(40 42) scale(0.34) translate(-30 -50)">
-            <ellipse cx="30" cy="64" rx="18" ry="28"/><ellipse cx="14" cy="32" rx="4.4" ry="5.4"/>
-            <ellipse cx="23" cy="22" rx="4" ry="4.8"/><ellipse cx="32" cy="18" rx="3.6" ry="4.4"/>
-            <ellipse cx="41" cy="22" rx="3.2" ry="4"/><ellipse cx="48" cy="30" rx="2.8" ry="3.4"/>
-          </g>
         </svg>
         <div>
           <div style={{ fontSize:20, fontWeight:700, letterSpacing:"-0.02em", lineHeight:1.1, color:"var(--black)" }}>Law Kaki</div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, CSSProperties } from "react";
 import { Job } from "@/lib/jobs";
 import { Interest, PickerProfile } from "@/lib/interests";
+import CircularLoader from "@/components/CircularLoader";
 
 interface JobWithInterests extends Job {
   interests: Interest[];
@@ -37,9 +38,12 @@ const I = {
    Helpers
    ============================================================ */
 function jobStateInfo(state: Job["state"]) {
-  if (state === "urgent") return { label: "Urgent",  bg: "#F9DDB4", fg: "#7A4A0F", dot: "#E89020" };
-  if (state === "taken")  return { label: "Taken",   bg: "#EDEAE2", fg: "#0F1F33", dot: "#6B7280" };
-  return                         { label: "Open",    bg: "#FFFFFF", fg: "#0F1F33", dot: "#0F1F33" };
+  if (state === "urgent")   return { label: "Urgent",    bg: "#F9DDB4", fg: "#7A4A0F", dot: "#E89020" };
+  if (state === "taken")    return { label: "Taken",     bg: "#EDEAE2", fg: "#0F1F33", dot: "#6B7280" };
+  if (state === "completed") return { label: "Completed", bg: "#EDEAE2", fg: "#0F1F33", dot: "#1F8A5B" };
+  if (state === "cancelled") return { label: "Not applicable", bg: "#EDEAE2", fg: "#6B7280", dot: "#6B7280" };
+  if (state === "expired")   return { label: "Expired",   bg: "#EDEAE2", fg: "#6B7280", dot: "#6B7280" };
+  return                            { label: "Open",      bg: "#FFFFFF", fg: "#0F1F33", dot: "#0F1F33" };
 }
 
 /* ============================================================
@@ -84,7 +88,7 @@ function RatingRow({ label, value }: { label: string; value: number | null }) {
 /* ============================================================
    Picker profile modal
    ============================================================ */
-function PickerProfileModal({
+export function PickerProfileModal({
   picker,
   jobId,
   onClose,
@@ -218,7 +222,7 @@ function PickerProfileModal({
 /* ============================================================
    Interest row — a single picker who expressed interest
    ============================================================ */
-function InterestRow({
+export function InterestRow({
   interest,
   onViewProfile,
 }: {
@@ -287,21 +291,57 @@ function InterestRow({
 /* ============================================================
    Posted job card
    ============================================================ */
-function PostedJobCard({
+export function PostedJobCard({
   job,
   interests,
   expanded,
   onToggle,
   onViewProfile,
+  token = "",
+  onCancelled,
+  onCompleted,
 }: {
   job: Job;
   interests: Interest[];
   expanded: boolean;
   onToggle: () => void;
   onViewProfile: (picker: PickerProfile, jobId: string) => void;
+  token?: string;
+  onCancelled?: (jobId: string) => void;
+  onCompleted?: (jobId: string) => void;
 }) {
-  const info         = jobStateInfo(job.state);
+  const info          = jobStateInfo(job.state);
   const interestCount = interests.length;
+  const expiredCount  = job.expiredInterestCount ?? 0;
+  const [busy, setBusy] = useState<"cancel" | "complete" | null>(null);
+
+  async function handleCancel() {
+    setBusy("cancel");
+    try {
+      await fetch("/api/jobs/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      onCancelled?.(job.id);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleComplete() {
+    setBusy("complete");
+    try {
+      await fetch("/api/jobs/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      onCompleted?.(job.id);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <div
@@ -357,7 +397,7 @@ function PostedJobCard({
             RM {job.fee}
           </span>
 
-          {job.state !== "taken" && (
+          {(job.state === "open" || job.state === "urgent") && (
             <span style={{
               fontSize: 11, fontWeight: 600,
               color: interestCount > 0 ? "#E89020" : "#6B7280",
@@ -368,6 +408,15 @@ function PostedJobCard({
           {job.state === "taken" && job.takenBy && (
             <span style={{ fontSize: 11, color: "#6B7280" }}>
               Taken by {job.takenBy.name.split(" ")[0]}
+            </span>
+          )}
+          {expiredCount > 0 && (
+            <span
+              title={`${expiredCount} ${expiredCount === 1 ? "picker's" : "pickers'"} interest expired — no response within 9 days`}
+              style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "#6B7280" }}
+            >
+              <Icon d={I.clock} size={10} sw={2} />
+              {expiredCount} expired
             </span>
           )}
 
@@ -409,6 +458,27 @@ function PostedJobCard({
               ))}
             </>
           )}
+
+          {(job.state === "open" || job.state === "urgent") && (
+            <button
+              onClick={handleCancel}
+              disabled={busy !== null}
+              className="lk-btn lk-btn--ghost lk-btn--sm"
+              style={{ marginTop: 4, height: 32, fontSize: 11.5 }}
+            >
+              {busy === "cancel" ? "Marking…" : "Mark as not applicable"}
+            </button>
+          )}
+          {job.state === "taken" && (
+            <button
+              onClick={handleComplete}
+              disabled={busy !== null}
+              className="lk-btn lk-btn--accent lk-btn--sm"
+              style={{ marginTop: 4, height: 32, fontSize: 11.5 }}
+            >
+              {busy === "complete" ? "Marking…" : "Mark complete"}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -429,7 +499,9 @@ export default function MyJobs({
   const [loading, setLoading]           = useState(true);
   const [expandedId, setExpandedId]     = useState<string | null>(null);
   const [modalData, setModalData]       = useState<{ picker: PickerProfile; jobId: string } | null>(null);
-  const [confirmedJobs, setConfirmedJobs] = useState<Set<string>>(new Set());
+  // Optimistic local overrides for state transitions confirmed via a direct
+  // fetch (confirm / cancel / complete) so the card updates without a refetch.
+  const [stateOverrides, setStateOverrides] = useState<Record<string, Job["state"]>>({});
 
   useEffect(() => {
     fetch("/api/jobs/posted", {
@@ -444,13 +516,21 @@ export default function MyJobs({
     setExpandedId((prev) => (prev === jobId ? null : jobId));
   }
 
+  function setOverride(jobId: string, state: Job["state"]) {
+    setStateOverrides((prev) => ({ ...prev, [jobId]: state }));
+  }
+
   function handleConfirmed(pickerName: string, jobId: string) {
-    setConfirmedJobs((prev) => new Set([...prev, jobId]));
+    setOverride(jobId, "taken");
     onConfirmed(pickerName);
   }
 
-  const openCount  = jobs.filter((j) => j.state !== "taken" && !confirmedJobs.has(j.id)).length;
-  const takenCount = jobs.filter((j) => j.state === "taken"  ||  confirmedJobs.has(j.id)).length;
+  function effectiveState(job: JobWithInterests): Job["state"] {
+    return stateOverrides[job.id] ?? job.state;
+  }
+
+  const openCount  = jobs.filter((j) => { const s = effectiveState(j); return s === "open" || s === "urgent"; }).length;
+  const takenCount = jobs.filter((j) => effectiveState(j) === "taken").length;
 
   return (
     <>
@@ -483,8 +563,8 @@ export default function MyJobs({
         }}
       >
         {loading && (
-          <div style={{ padding: 32, textAlign: "center", color: "#6B7280", fontSize: 13 }}>
-            Loading…
+          <div style={{ padding: 40, display: "flex", justifyContent: "center" }}>
+            <CircularLoader size={120} label="Loading your jobs…" />
           </div>
         )}
         {!loading && jobs.length === 0 && (
@@ -492,16 +572,22 @@ export default function MyJobs({
             No posted jobs yet.
           </div>
         )}
-        {jobs.map((job) => (
-          <PostedJobCard
-            key={job.id}
-            job={confirmedJobs.has(job.id) ? { ...job, state: "taken" } : job}
-            interests={job.interests}
-            expanded={expandedId === job.id}
-            onToggle={() => toggle(job.id)}
-            onViewProfile={(picker, jobId) => setModalData({ picker, jobId })}
-          />
-        ))}
+        {jobs.map((job) => {
+          const state = effectiveState(job);
+          return (
+            <PostedJobCard
+              key={job.id}
+              job={state === job.state ? job : { ...job, state }}
+              interests={job.interests}
+              expanded={expandedId === job.id}
+              onToggle={() => toggle(job.id)}
+              onViewProfile={(picker, jobId) => setModalData({ picker, jobId })}
+              token={token}
+              onCancelled={(id) => setOverride(id, "cancelled")}
+              onCompleted={(id) => setOverride(id, "completed")}
+            />
+          );
+        })}
       </div>
 
       {/* Picker profile modal */}

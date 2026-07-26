@@ -186,3 +186,159 @@ SELECT
   ROUND(AVG(completeness::numeric),    2)                                    AS avg_completeness
 FROM ratings
 GROUP BY picker_id;
+
+-- =============================================================================
+-- Job lifecycle statuses — added 2026-07-20
+-- Adds the 'expired' job state (30-day idle sweep) and per-interest tracking
+-- for the 3-day / 7-day reminder → 9-day expiry schedule on unconfirmed
+-- interest, plus a 'declined' interest status for pickers who weren't chosen
+-- once the poster confirmed someone else. Run this section against an
+-- existing database that only has the tables above.
+-- =============================================================================
+
+ALTER TYPE job_state ADD VALUE IF NOT EXISTS 'expired';
+
+ALTER TABLE job_interests
+  ADD COLUMN IF NOT EXISTS status               VARCHAR(10) NOT NULL DEFAULT 'pending'
+                                                    CHECK (status IN ('pending', 'expired', 'declined')),
+  ADD COLUMN IF NOT EXISTS confirm_code         VARCHAR(6),
+  ADD COLUMN IF NOT EXISTS reminder_3d_sent_at  TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reminder_7d_sent_at  TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS job_interests_confirm_code_idx
+  ON job_interests (confirm_code) WHERE confirm_code IS NOT NULL;
+
+-- Safety net if you already ran the block above before 'declined' was added —
+-- re-running this on a fresh setup is a harmless no-op.
+ALTER TABLE job_interests DROP CONSTRAINT IF EXISTS job_interests_status_check;
+ALTER TABLE job_interests ADD CONSTRAINT job_interests_status_check
+  CHECK (status IN ('pending', 'expired', 'declined'));
+
+-- ─── One-time setup — run after deploying, with your live app URL ───────────
+-- Requires the pg_cron and pg_net extensions (enable under Database →
+-- Extensions in the Supabase dashboard, or run the two CREATE EXTENSION
+-- lines below if you have permission).
+--
+-- CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- CREATE EXTENSION IF NOT EXISTS pg_net;
+--
+-- SELECT cron.schedule(
+--   'lawkaki-job-sweep', '0 * * * *',  -- hourly
+--   $$ SELECT net.http_post(
+--        url     := 'https://<your-app-domain>/api/cron/sweep',
+--        headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>'),
+--        body    := '{}'::jsonb
+--      ) $$
+-- );
+
+-- =============================================================================
+-- Bidirectional reviews — added 2026-07-20
+-- ratings.job_id was UNIQUE (one rating per job, always poster-rates-picker).
+-- Widened to one rating per (job, direction) so a picker can also rate the
+-- poster on the same job. picker_ratings keeps its original meaning (only
+-- poster-authored ratings); poster_ratings is the new symmetric view.
+-- =============================================================================
+
+DO $$
+DECLARE cname text;
+BEGIN
+  SELECT tc.constraint_name INTO cname
+  FROM information_schema.table_constraints tc
+  JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+  WHERE tc.table_name = 'ratings' AND tc.constraint_type = 'UNIQUE' AND kcu.column_name = 'job_id'
+  LIMIT 1;
+  IF cname IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE ratings DROP CONSTRAINT %I', cname);
+  END IF;
+END $$;
+
+ALTER TABLE ratings
+  ADD COLUMN IF NOT EXISTS rater_role VARCHAR(10) NOT NULL DEFAULT 'poster'
+    CHECK (rater_role IN ('poster', 'picker'));
+
+ALTER TABLE ratings DROP CONSTRAINT IF EXISTS ratings_job_id_rater_role_key;
+ALTER TABLE ratings ADD CONSTRAINT ratings_job_id_rater_role_key UNIQUE (job_id, rater_role);
+
+CREATE OR REPLACE VIEW picker_ratings AS
+SELECT
+  picker_id,
+  COUNT(*)                                                                   AS total_jobs,
+  ROUND(AVG((punctuality + professionalism + completeness)::numeric / 3), 2) AS avg_rating,
+  ROUND(AVG(punctuality::numeric),     2)                                    AS avg_punctuality,
+  ROUND(AVG(professionalism::numeric), 2)                                    AS avg_professionalism,
+  ROUND(AVG(completeness::numeric),    2)                                    AS avg_completeness
+FROM ratings
+WHERE rater_role = 'poster'
+GROUP BY picker_id;
+
+-- New — the poster's own score, built from picker-authored ratings.
+CREATE OR REPLACE VIEW poster_ratings AS
+SELECT
+  poster_id,
+  COUNT(*)                                                                   AS total_jobs,
+  ROUND(AVG((punctuality + professionalism + completeness)::numeric / 3), 2) AS avg_rating,
+  ROUND(AVG(punctuality::numeric),     2)                                    AS avg_punctuality,
+  ROUND(AVG(professionalism::numeric), 2)                                    AS avg_professionalism,
+  ROUND(AVG(completeness::numeric),    2)                                    AS avg_completeness
+FROM ratings
+WHERE rater_role = 'picker'
+GROUP BY poster_id;
+
+-- =============================================================================
+-- notifications — added 2026-07-24
+-- Every WhatsApp-worthy event writes a row here regardless of whether the
+-- WhatsApp send actually succeeds (Twilio down, flag off, number invalid,
+-- etc). This is the in-app fallback called out as a known weak spot in
+-- CLAUDE.md — a lawyer with a broken WhatsApp still has a record in Law Kaki.
+-- whatsapp_sent_at is set only when the WhatsApp leg was attempted AND
+-- succeeded; NULL means the event only exists here.
+--
+-- type is intentionally a free VARCHAR, not an ENUM/CHECK — this list will
+-- keep growing (job_cancelled, review_received, etc.) and each addition
+-- shouldn't need a migration. Known values as of this migration:
+--   'new_job_broadcast'        — new job posted, sent to eligible pickers
+--   'appointment_reminder_2h'  — 2 hours before a confirmed appointment
+--   'appointment_reminder_30m' — 30 minutes before a confirmed appointment
+--
+-- role records which hat the recipient was wearing when this notification
+-- was generated (e.g. the same appointment reminder writes one row with
+-- role='picker' for the picker and one row with role='poster' for the
+-- poster). The inbox UI uses this to split "As poster" / "As picker" tabs
+-- without having to join back to jobs to work out which side the user was on.
+-- =============================================================================
+CREATE TABLE notifications (
+  id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID         NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  job_id           UUID         REFERENCES jobs (id) ON DELETE CASCADE,
+  type             VARCHAR(40)  NOT NULL,
+  role             VARCHAR(10)  NOT NULL CHECK (role IN ('poster', 'picker')),
+  title            VARCHAR(200) NOT NULL,
+  body             TEXT,
+  whatsapp_sent_at TIMESTAMPTZ,
+  read_at          TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX notifications_user_id_idx ON notifications (user_id, created_at DESC);
+CREATE INDEX notifications_unread_idx  ON notifications (user_id) WHERE read_at IS NULL;
+CREATE INDEX notifications_job_id_idx  ON notifications (job_id);
+
+-- Reminder de-duplication — one 2h and one 30m reminder per confirmed job,
+-- regardless of how often the reminder cron polls.
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS reminder_2h_sent_at  TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reminder_30m_sent_at TIMESTAMPTZ;
+
+-- ─── Second cron schedule — appointment reminders ───────────────────────────
+-- The hourly sweep above is far too coarse for a 30-minute reminder window,
+-- so this runs on its own, tighter schedule. Every 5 minutes comfortably
+-- catches both the 2h and 30m windows without spamming.
+--
+-- SELECT cron.schedule(
+--   'lawkaki-appointment-reminders', '*/5 * * * *',
+--   $$ SELECT net.http_post(
+--        url     := 'https://<your-app-domain>/api/cron/reminders',
+--        headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>'),
+--        body    := '{}'::jsonb
+--      ) $$
+-- );

@@ -379,3 +379,62 @@ aside::-webkit-scrollbar-thumb, .lk-scroll::-webkit-scrollbar-thumb {
   70%  { transform: translateX(-50%) scale(1.6); opacity: 0; }
   100% { transform: translateX(-50%) scale(1.6); opacity: 0; }
 }
+
+/* ============================================================
+   KitKat "break" icon — task list empty state
+   ============================================================ */
+
+@keyframes lk-kitkat-break {
+  0%, 100% { transform: rotate(0deg) translate(0, 0); }
+  50%      { transform: rotate(-8deg) translate(-1px, 2px); }
+}
+
+.lk-kitkat-piece {
+  transform-box: fill-box;
+  transform-origin: 0% 100%;
+  animation: lk-kitkat-break 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lk-kitkat-piece { animation: none; }
+}
+
+/* ============================================================
+   Circular loader — destination pin dropping onto its shadow,
+   with a radar-style ping ring
+   ============================================================ */
+
+@keyframes lk-loader-pin-bounce {
+  0%, 100% { transform: translateY(0);     animation-timing-function: cubic-bezier(0.5, 0, 1, 0.5); }
+  50%      { transform: translateY(-16px); animation-timing-function: cubic-bezier(0, 0.5, 0.5, 1); }
+}
+
+.lk-loader-pin {
+  animation: lk-loader-pin-bounce 1.3s infinite;
+  transform-origin: 50% 100%;
+}
+
+@keyframes lk-loader-shadow-pulse {
+  0%, 100% { transform: scale(1);    opacity: 0.3; }
+  50%      { transform: scale(0.55); opacity: 0.12; }
+}
+
+.lk-loader-shadow {
+  animation: lk-loader-shadow-pulse 1.3s infinite;
+}
+
+@keyframes lk-loader-ping {
+  0%   { transform: scale(0.4); opacity: 0.55; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.lk-loader-ping {
+  animation: lk-loader-ping 1.3s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lk-loader-pin,
+  .lk-loader-shadow,
+  .lk-loader-ping { animation: none; }
+  .lk-loader-ping { opacity: 0; }
+}

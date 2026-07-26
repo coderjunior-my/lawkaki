@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
       ? supabase
           .from("job_interests")
           .select(`
-            id, job_id, expressed_at,
+            id, job_id, expressed_at, status,
             picker:users!job_interests_picker_id_fkey (id, name, phone, firm_name, firm_state)
           `)
           .in("job_id", jobIds)

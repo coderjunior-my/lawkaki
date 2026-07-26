@@ -1,0 +1,349 @@
+<title>Law Kaki — For Your Firm</title>
+<style>
+  :root {
+    --ink: #0F1F33;
+    --paper: #FAF7F2;
+    --surface: #FFFFFF;
+    --muted: #6B7280;
+    --hair: #E0DDD3;
+    --pale: #EDEAE2;
+    --amber: #E89020;
+    --amber-soft: #F9DDB4;
+
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.55;
+  }
+
+  ::selection { background: var(--ink); color: var(--paper); }
+
+  a { color: inherit; }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 24px 80px;
+  }
+
+  /* ---------- Header ---------- */
+  header.mark {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 64px;
+  }
+  header.mark svg { flex-shrink: 0; }
+  .wordmark { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
+  .wordmark-sub { font-size: 11px; color: var(--muted); font-weight: 500; margin-top: 1px; }
+
+  /* ---------- Hero ---------- */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: -0.028em;
+    line-height: 1.12;
+    margin: 0 0 18px;
+    text-wrap: balance;
+    max-width: 15ch;
+  }
+  .lede {
+    font-size: 17px;
+    color: var(--muted);
+    max-width: 58ch;
+    margin: 0 0 6px;
+  }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  section { margin-top: 56px; }
+
+  h2 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin: 0 0 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--hair);
+  }
+
+  p { max-width: 62ch; }
+  p.body { font-size: 15px; }
+
+  /* ---------- How it works ---------- */
+  .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+  .steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 18px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--hair);
+  }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    flex-shrink: 0;
+    width: 28px;
+    padding-top: 2px;
+  }
+  .step-title { font-size: 15px; font-weight: 700; letter-spacing: -0.005em; margin-bottom: 3px; }
+  .step-body { font-size: 14px; color: var(--muted); max-width: 52ch; }
+
+  /* ---------- Stat row ---------- */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--hair);
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .stat {
+    background: var(--surface);
+    padding: 20px 18px;
+  }
+  .stat-num {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .stat-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  .map-note {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+  }
+  .map-note svg { flex-shrink: 0; }
+  .map-note p { margin: 0; font-size: 13px; color: var(--muted); }
+  .map-note strong { color: var(--ink); }
+
+  /* ---------- Benefit grid ---------- */
+  .benefits { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .benefit {
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .benefit-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.005em; }
+  .benefit-body { font-size: 13.5px; color: var(--muted); }
+
+  /* ---------- Candour box ---------- */
+  .candour {
+    background: var(--pale);
+    border: 1px solid var(--hair);
+    border-radius: 14px;
+    padding: 22px 24px;
+  }
+  .candour-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--hair); }
+  .candour-item:last-child { border-bottom: none; }
+  .candour-item svg { flex-shrink: 0; margin-top: 2px; }
+  .candour-item p { margin: 0; font-size: 13.5px; color: var(--ink); }
+  .candour-item p em { color: var(--muted); font-style: normal; }
+
+  /* ---------- Getting started ---------- */
+  .go-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .go-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 14.5px;
+  }
+  .go-list li::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 999px;
+    background: var(--amber);
+    flex-shrink: 0;
+    margin-top: 8px;
+  }
+
+  /* ---------- Footer ---------- */
+  footer {
+    margin-top: 72px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hair);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  @media (max-width: 560px) {
+    h1 { font-size: 30px; }
+    .stat-row { grid-template-columns: 1fr; }
+    .benefits { grid-template-columns: 1fr; }
+    .wrap { padding: 40px 18px 60px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="mark">
+    <svg width="28" height="35" viewBox="0 0 80 100" fill="none" aria-hidden="true">
+      <path d="M40 4 C60.4 4 76 19.6 76 40 C76 53.6 67.5 66 56 76 L40 96 L24 76 C12.5 66 4 53.6 4 40 C4 19.6 19.6 4 40 4 Z" fill="#0F1F33"/>
+    </svg>
+    <div>
+      <div class="wordmark">Law Kaki</div>
+      <div class="wordmark-sub">Your best legal kaki on the ground.</div>
+    </div>
+  </header>
+
+  <div class="eyebrow">For managing partners &amp; ops managers</div>
+  <h1>What Law Kaki does, for your firm.</h1>
+  <p class="lede">A plain explanation for deciding whether to bring it in — <strong>what it does today</strong>, what it means for your lawyers, and what to know before you commit.</p>
+
+  <section>
+    <h2>The problem you already know</h2>
+    <p class="body">Ara Damansara at 2pm. Mont Kiara at 4pm. Bangsar at 6pm. Three signings, three clients, and an entire afternoon lost to KL traffic for what's often twenty minutes of actual legal work each time.</p>
+    <p class="body">Delegating to a colleague nearby already happens — informally, over a WhatsApp message to whoever's free. It works, but there's no visibility into who's actually available, no record of who covered what, and no accountability if it goes wrong. Law Kaki turns that existing habit into a structured, trackable system.</p>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>
+        <div>
+          <div class="step-title">Post</div>
+          <div class="step-body">A lawyer who can't make a signing posts it — venue, time, document type, indicative fee.</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="step-title">Notify</div>
+          <div class="step-body">Every eligible lawyer on the platform gets a WhatsApp alert and sees it on their map.</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="step-title">Confirm</div>
+          <div class="step-body">Interested lawyers put their hand up; the poster picks one and confirms. Both sides get each other's contact.</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="step-title">Remind &amp; complete</div>
+          <div class="step-body">Automatic reminders fire 2 hours and 30 minutes before the appointment. Afterward, the poster marks it complete and rates the lawyer who covered it.</div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>What's already live</h2>
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-num">13 + 3</div>
+        <div class="stat-label">states and federal territories covered</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">119</div>
+        <div class="stat-label">law firms in the registration directory</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">3</div>
+        <div class="stat-label">jobs before a lawyer's rating goes public</div>
+      </div>
+    </div>
+    <div class="map-note">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+      <p><strong>Nationwide, not a KL/Selangor trial.</strong> A lawyer at your firm can pick up a job posted by a lawyer at a different firm, and vice versa — coverage is open and cross-firm as it stands today.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What it means for your firm</h2>
+    <div class="benefits">
+      <div class="benefit">
+        <div class="benefit-title">Recaptures billable time</div>
+        <div class="benefit-body">Less time in transit between signings, more time on higher-value work.</div>
+      </div>
+      <div class="benefit">
+        <div class="benefit-title">No more scrambling</div>
+        <div class="benefit-body">A scheduling conflict becomes a two-minute post instead of a round of individual messages.</div>
+      </div>
+      <div class="benefit">
+        <div class="benefit-title">Visibility without micromanaging</div>
+        <div class="benefit-body">See who's covering what without being looped into every handoff.</div>
+      </div>
+      <div class="benefit">
+        <div class="benefit-title">Nothing changes for clients</div>
+        <div class="benefit-body">They still deal with your firm — Law Kaki is purely internal coordination between lawyers.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What to know before you commit</h2>
+    <div class="candour">
+      <div class="candour-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F1F33" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <p><strong>No payment processing.</strong> <em>Commission shown is indicative only — settlement happens outside the platform, the way your firm already handles it.</em></p>
+      </div>
+      <div class="candour-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F1F33" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <p><strong>No Bar Council verification yet.</strong> <em>Registration is self-serve today — a lawyer verifies their phone via WhatsApp OTP and picks their firm from a list, with no credential check or approval gate in front of it. If your firm needs tighter control before piloting, tell us — that's a scoping conversation, not a rebuild.</em></p>
+      </div>
+      <div class="candour-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F1F33" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <p><strong>This is a pilot-stage product.</strong> <em>Not a mature SaaS platform yet — expect rough edges, and expect the team behind it to want your feedback.</em></p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Getting your firm started</h2>
+    <ul class="go-list">
+      <li>Lawyers register themselves — a WhatsApp link, a phone number, and a minute to fill in name, firm, and role.</li>
+      <li>No setup required on the firm's end to begin using it.</li>
+      <li>Want firm-only visibility, or a review step before your lawyers appear on the platform? Raise it before rollout — worth deciding deliberately rather than assuming.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>Law Kaki — pilot-stage, built for Malaysian conveyancing lawyers.</span>
+    <span>Talk to the team for a walkthrough.</span>
+  </footer>
+
+</div>

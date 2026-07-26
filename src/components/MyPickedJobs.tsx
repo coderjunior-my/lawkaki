@@ -10,6 +10,7 @@ import {
   parseTimeToMins,
   minsToTimeStr,
 } from "@/lib/pickedJobs";
+import CircularLoader from "@/components/CircularLoader";
 
 /* ============================================================
    Icon
@@ -93,6 +94,11 @@ function PosterDetail({ job }: { job: PickedJob }) {
       {job.status === "awaiting" && (
         <div style={{ background: "var(--off-white)", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "var(--warm-grey)", fontWeight: 500 }}>
           Waiting for the poster to confirm. You&apos;ll get a WhatsApp message when they do.
+        </div>
+      )}
+      {job.status === "confirmed" && (
+        <div style={{ background: "var(--off-white)", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "var(--warm-grey)", fontWeight: 500 }}>
+          You&apos;re confirmed for this job. The poster will mark it complete once it&apos;s done.
         </div>
       )}
       {job.status === "completed" && job.paymentStatus === "unpaid" && (
@@ -259,7 +265,7 @@ function TodayItinerary({
 /* ============================================================
    Standard card view (all filters except today)
    ============================================================ */
-function PickedJobCard({
+export function PickedJobCard({
   job,
   expanded,
   onToggle,
@@ -420,9 +426,7 @@ export default function MyPickedJobs({
       {/* Body */}
       {loading ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ textAlign: "center", color: "var(--warm-grey)", fontSize: 13, padding: 40 }}>
-            Loading…
-          </div>
+          <CircularLoader size={120} label="Loading…" />
         </div>
       ) : statusFilter === "today" ? (
         jobs.length === 0 ? (

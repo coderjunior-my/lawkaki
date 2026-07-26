@@ -8,6 +8,8 @@ export const flags = {
   // Send OTP via WhatsApp instead of logging to console. Requires mockOtp=false.
   whatsappOtp: process.env.FEATURE_WHATSAPP_OTP === "true",
 
-  // Send interest + confirmation notifications via WhatsApp.
+  // Send interest, confirmation, new-job-broadcast and appointment-reminder
+  // notifications via WhatsApp. When false, these events still get written
+  // to the notifications table — only the WhatsApp leg is skipped.
   whatsappNotifications: process.env.FEATURE_WHATSAPP_NOTIFICATIONS === "true",
 } as const;
