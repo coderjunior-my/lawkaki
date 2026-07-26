@@ -10,6 +10,7 @@ import { PickedJob, StatusFilter, getTodayISO, parseTimeToMins } from "@/lib/pic
 import TaskTracker from "@/components/TaskTracker";
 import Settings from "@/components/Settings";
 import CoachmarkTour from "@/components/CoachmarkTour";
+import CriticalNotice from "@/components/CriticalNotice";
 
 /* ============================================================
    Icon — inline Lucide-style SVGs
@@ -1658,6 +1659,9 @@ export default function Dashboard({
   const [pickedFilter, setPickedFilter] = useState<StatusFilter>("today");
   const [allJobs, setAllJobs]           = useState<Job[]>([]);
   const [pickedJobs, setPickedJobs]     = useState<PickedJob[]>([]);
+  // null = not loaded yet — deliberately distinct from false, so the
+  // critical notice never flashes on screen before we actually know.
+  const [bankDetailsAdded, setBankDetailsAdded] = useState<boolean | null>(null);
 
   const refreshBrowseJobs = useCallback(() => {
     return fetch("/api/jobs", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
@@ -1674,6 +1678,11 @@ export default function Dashboard({
       fetch("/api/jobs/picked", { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.json())
         .then((d) => setPickedJobs(d.jobs ?? []))
+        .catch(() => {});
+
+      fetch("/api/users/me", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((d) => setBankDetailsAdded(Boolean(d.bankDetailsAdded)))
         .catch(() => {});
     }
   }, [token, refreshBrowseJobs]);
@@ -1752,6 +1761,14 @@ export default function Dashboard({
         />
       )}
 
+      {bankDetailsAdded === false && (
+        <CriticalNotice
+          message="Add your bank details so you can get paid for jobs you pick up."
+          actionLabel="Add bank details"
+          onAction={() => setShowSettings(true)}
+        />
+      )}
+
       <main style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
         {/* Left panel */}
         <aside
@@ -1777,6 +1794,7 @@ export default function Dashboard({
             <>
               {showSettings ? (
                 <Settings
+                  token={token}
                   userName={displayName}
                   userPhone={userPhone}
                   onSignOut={onSignOut}
@@ -1785,6 +1803,8 @@ export default function Dashboard({
                     setDisplayName(n);
                     localStorage.setItem("lk_name", n);
                   }}
+                  bankDetailsAdded={Boolean(bankDetailsAdded)}
+                  onBankDetailsAdded={() => setBankDetailsAdded(true)}
                 />
               ) : (
                 <>

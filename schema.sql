@@ -359,3 +359,15 @@ ALTER TABLE users ADD CONSTRAINT users_firm_state_check
     'Negeri Sembilan', 'Pahang', 'Perak', 'Perlis', 'Pulau Pinang',
     'Putrajaya', 'Sabah', 'Sarawak', 'Selangor', 'Terengganu'
   ));
+
+-- =============================================================================
+-- Bank details completion flag — added 2026-07-27
+-- Phase 1 has no platform-mediated payments (settlement happens directly
+-- between lawyers/firms), so we deliberately don't store real bank account
+-- numbers here — that's PII with its own handling requirements and isn't
+-- needed yet. This is just a completion flag driving the persistent
+-- "add your bank details" critical notice until a picker has done it once
+-- via their firm/bank's own channel.
+-- =============================================================================
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS bank_details_added BOOLEAN NOT NULL DEFAULT FALSE;

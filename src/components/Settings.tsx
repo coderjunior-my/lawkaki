@@ -217,12 +217,32 @@ function isValidEmail(email: string): boolean {
 /* ============================================================
    Profile tab
    ============================================================ */
-function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: User) => void; onSignOut?: () => void }) {
+function ProfileTab({
+  user, setUser, onSignOut, token, bankDetailsAdded, onBankDetailsAdded,
+}: {
+  user: User; setUser: (u: User) => void; onSignOut?: () => void;
+  token?: string; bankDetailsAdded?: boolean; onBankDetailsAdded?: () => void;
+}) {
   const [editing, setEditing]     = useState(false);
   const [draft, setDraft]         = useState<User>({ ...user });
   const [firmOpen, setFirmOpen]   = useState(false);
   const [saved, setSaved]         = useState(false);
+  const [bankSaving, setBankSaving] = useState(false);
   const fileRef                   = useRef<HTMLInputElement>(null);
+
+  async function addBankDetails() {
+    if (!token || bankDetailsAdded) return;
+    setBankSaving(true);
+    try {
+      const res = await fetch("/api/users/bank-details", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) onBankDetailsAdded?.();
+    } finally {
+      setBankSaving(false);
+    }
+  }
 
   const roleLabels: Record<UserRole, string> = { post:"Post jobs", pick:"Pick jobs", both:"Both" };
   const roles = [
@@ -402,11 +422,23 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
                 <Ic d={IC.credit} size={18} style={{ color:"var(--black)" }}/>
               </div>
               <div>
-                <div style={{ fontSize:14, fontWeight:600 }}>{user.bankName}</div>
-                <div style={{ fontSize:13, color:"var(--warm-grey)", fontVariantNumeric:"tabular-nums" }}>{user.bankAccount}</div>
+                <div style={{ fontSize:14, fontWeight:600 }}>{bankDetailsAdded ? user.bankName : "Not added yet"}</div>
+                {bankDetailsAdded && (
+                  <div style={{ fontSize:13, color:"var(--warm-grey)", fontVariantNumeric:"tabular-nums" }}>{user.bankAccount}</div>
+                )}
               </div>
             </div>
-            <button className="lk-btn lk-btn--ghost lk-btn--sm"><Ic d={IC.edit} size={14}/> Update</button>
+            <button
+              className="lk-btn lk-btn--ghost lk-btn--sm"
+              disabled={bankSaving || bankDetailsAdded}
+              onClick={addBankDetails}
+            >
+              {bankDetailsAdded
+                ? <><Ic d={IC.check} size={14}/> Added</>
+                : bankSaving
+                  ? "Saving…"
+                  : <><Ic d={IC.edit} size={14}/> Add now</>}
+            </button>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", background:"var(--pale-grey)", borderRadius:10 }}>
             <Ic d={IC.shield} size={14} style={{ color:"var(--warm-grey)", flexShrink:0 }}/>
@@ -536,8 +568,11 @@ interface SettingsProps {
   userName?: string;
   userPhone?: string;
   onNameChange?: (n: string) => void;
+  token?: string;
+  bankDetailsAdded?: boolean;
+  onBankDetailsAdded?: () => void;
 }
-export default function Settings({ onClose, onSignOut }: SettingsProps) {
+export default function Settings({ onClose, onSignOut, token, bankDetailsAdded, onBankDetailsAdded }: SettingsProps) {
   const [tab, setTab]   = useState<SettingsTab>("profile");
   const [user, setUser] = useState<User>({ ...INIT_USER });
 
@@ -554,7 +589,12 @@ export default function Settings({ onClose, onSignOut }: SettingsProps) {
               </h1>
               <p style={{ fontSize:14, color:"var(--warm-grey)", margin:0 }}>{TAB_SUBS[tab]}</p>
             </div>
-            {tab==="profile"  && <ProfileTab  user={user} setUser={setUser} onSignOut={onSignOut}/>}
+            {tab==="profile"  && (
+              <ProfileTab
+                user={user} setUser={setUser} onSignOut={onSignOut}
+                token={token} bankDetailsAdded={bankDetailsAdded} onBankDetailsAdded={onBankDetailsAdded}
+              />
+            )}
             {tab==="history"  && <HistoryTab/>}
           </div>
         </main>
