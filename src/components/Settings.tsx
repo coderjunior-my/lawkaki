@@ -114,9 +114,9 @@ const INIT_HISTORY: HistJob[] = [
 /* ============================================================
    Shared primitives
    ============================================================ */
-function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({ id, title, action, children }: { id?: string; title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div>
+    <div id={id}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
         <h3 style={{ fontSize:17, fontWeight:700, letterSpacing:"-0.01em", margin:0 }}>{title}</h3>
         {action}
@@ -227,10 +227,11 @@ interface BankDetails { bankName: string; accountNumber: string; accountHolderNa
 const ACCOUNT_NUMBER_RE = /^\d{6,20}$/;
 
 function ProfileTab({
-  user, setUser, onSignOut, token, bankDetails, onBankDetailsSaved,
+  user, setUser, onSignOut, token, bankDetails, onBankDetailsSaved, focusPayment,
 }: {
   user: User; setUser: (u: User) => void; onSignOut?: () => void;
   token?: string; bankDetails?: BankDetails | null; onBankDetailsSaved?: (d: BankDetails) => void;
+  focusPayment?: boolean;
 }) {
   const [editing, setEditing]     = useState(false);
   const [draft, setDraft]         = useState<User>({ ...user });
@@ -254,6 +255,26 @@ function ProfileTab({
     setBankError(null);
     setBankFormOpen(true);
   }
+
+  // Jump straight to Payment details (form open, scrolled into view) when
+  // arriving via the "Add bank details" critical notice, so the poster
+  // doesn't have to hunt for it further down the page.
+  useEffect(() => {
+    if (!focusPayment) return;
+    openBankForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPayment]);
+
+  useEffect(() => {
+    if (!focusPayment || !bankFormOpen) return;
+    // Wait for the now-expanded form to actually paint (it's much taller
+    // than the collapsed view) before measuring where to scroll to —
+    // scrolling against the pre-expansion layout lands short/long.
+    const raf = requestAnimationFrame(() => {
+      document.getElementById("lk-settings-payment-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [focusPayment, bankFormOpen]);
 
   async function saveBankDetails() {
     if (!token) return;
@@ -450,7 +471,7 @@ function ProfileTab({
       </Section>
 
       {/* Payment details */}
-      <Section title="Payment details">
+      <Section id="lk-settings-payment-details" title="Payment details">
         {!bankFormOpen ? (
           <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"16px 18px", display:"flex", flexDirection:"column", gap:8 }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -906,12 +927,13 @@ interface SettingsProps {
   bankDetails?: BankDetails | null;
   onBankDetailsSaved?: (d: BankDetails) => void;
   initialTab?: SettingsTab;
+  focusPayment?: boolean;
 }
 function initialsFrom(name: string): string {
   return name.split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 }
 
-export default function Settings({ onClose, onSignOut, token, userName, userPhone, bankDetails, onBankDetailsSaved, initialTab }: SettingsProps) {
+export default function Settings({ onClose, onSignOut, token, userName, userPhone, bankDetails, onBankDetailsSaved, initialTab, focusPayment }: SettingsProps) {
   const [tab, setTab]   = useState<SettingsTab>(initialTab ?? "profile");
   // The rest of this profile (rating, job count, availability, etc.) is
   // still mock data — see docs/PRD.md — but name/phone are real, since the
@@ -940,6 +962,7 @@ export default function Settings({ onClose, onSignOut, token, userName, userPhon
               <ProfileTab
                 user={user} setUser={setUser} onSignOut={onSignOut}
                 token={token} bankDetails={bankDetails} onBankDetailsSaved={onBankDetailsSaved}
+                focusPayment={focusPayment}
               />
             )}
             {tab==="history"  && <HistoryTab/>}

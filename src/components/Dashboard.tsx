@@ -1667,6 +1667,7 @@ export default function Dashboard({
   >(undefined);
   const [billingDueNow, setBillingDueNow] = useState(0);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"profile" | "history" | "billing">("profile");
+  const [settingsFocusPayment, setSettingsFocusPayment] = useState(false);
 
   const refreshBrowseJobs = useCallback(() => {
     return fetch("/api/jobs", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
@@ -1780,7 +1781,7 @@ export default function Dashboard({
         <CriticalNotice
           message="Add your bank details so you can get paid for jobs you pick up."
           actionLabel="Add bank details"
-          onAction={() => { setSettingsInitialTab("profile"); setShowSettings(true); }}
+          onAction={() => { setSettingsInitialTab("profile"); setSettingsFocusPayment(true); setShowSettings(true); }}
         />
       )}
 
@@ -1821,7 +1822,7 @@ export default function Dashboard({
                   userName={displayName}
                   userPhone={userPhone}
                   onSignOut={onSignOut}
-                  onClose={() => setShowSettings(false)}
+                  onClose={() => { setShowSettings(false); setSettingsFocusPayment(false); }}
                   onNameChange={(n) => {
                     setDisplayName(n);
                     localStorage.setItem("lk_name", n);
@@ -1829,6 +1830,7 @@ export default function Dashboard({
                   bankDetails={bankDetails ?? null}
                   onBankDetailsSaved={(d) => setBankDetails(d)}
                   initialTab={settingsInitialTab}
+                  focusPayment={settingsFocusPayment}
                 />
               ) : (
                 <>
