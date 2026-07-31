@@ -11,6 +11,7 @@ import TaskTracker from "@/components/TaskTracker";
 import Settings from "@/components/Settings";
 import CoachmarkTour from "@/components/CoachmarkTour";
 import CriticalNotice from "@/components/CriticalNotice";
+import { getNotificationTarget, NotificationTarget, TaskTab } from "@/lib/notificationActions";
 
 /* ============================================================
    Icon — inline Lucide-style SVGs
@@ -90,19 +91,19 @@ const I = {
    ============================================================ */
 function LogoMark({ isMobile = false }: { isMobile?: boolean }) {
   return (
-    <a href="/" style={{ display: "flex", alignItems: "center", gap: 12, textDecoration: "none", flexShrink: 0 }}>
+    <a href="/" style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12, textDecoration: "none", flexShrink: 0 }}>
       <svg width="32" height="40" viewBox="0 0 80 100" fill="none" aria-hidden>
         <path
           d="M40 4 C60.4 4 76 19.6 76 40 C76 53.6 67.5 66 56 76 L40 96 L24 76 C12.5 66 4 53.6 4 40 C4 19.6 19.6 4 40 4 Z"
           fill="#0F1F33"
         />
       </svg>
-      {!isMobile && (
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1, color: "var(--black)" }}>Law Kaki</div>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1, color: "var(--black)" }}>Law Kaki</div>
+        {!isMobile && (
           <div style={{ fontSize: 11, color: "var(--warm-grey)", fontWeight: 500 }}>Your best legal kaki on the ground.</div>
-        </div>
-      )}
+        )}
+      </div>
     </a>
   );
 }
@@ -130,7 +131,13 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hr / 24)}d ago`;
 }
 
-function NotificationBell({ token = "" }: { token?: string }) {
+function NotificationBell({
+  token = "",
+  onNavigate,
+}: {
+  token?: string;
+  onNavigate?: (target: NotificationTarget) => void;
+}) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [userRole, setUserRole]           = useState<"poster" | "picker" | "both">("both");
   const [open, setOpen]                   = useState(false);
@@ -241,15 +248,22 @@ function NotificationBell({ token = "" }: { token?: string }) {
               ) : (
                 visible.map((n) => {
                   const unread = !n.readAt;
+                  const target = getNotificationTarget(n.type, n.role);
                   return (
                     <button
                       key={n.id}
-                      onClick={() => markRead([n.id])}
+                      onClick={() => {
+                        markRead([n.id]);
+                        if (target && onNavigate) {
+                          onNavigate(target);
+                          setOpen(false);
+                        }
+                      }}
                       style={{
                         display: "block", width: "100%", textAlign: "left",
                         padding: "12px 16px", background: unread ? "var(--off-white)" : "#FFFFFF",
                         border: "none", borderBottom: "1px solid var(--pale-grey)",
-                        cursor: "pointer", fontFamily: "inherit",
+                        cursor: target ? "pointer" : "default", fontFamily: "inherit",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -289,12 +303,14 @@ function TopNav({
   onTasks,
   tasksActive = false,
   token = "",
+  onNotificationNavigate,
 }: {
   isMobile?: boolean;
   onSettings?: () => void;
   onTasks?: () => void;
   tasksActive?: boolean;
   token?: string;
+  onNotificationNavigate?: (target: NotificationTarget) => void;
 }) {
   return (
     <header
@@ -360,7 +376,7 @@ function TopNav({
       </button>
 
       {/* Bell */}
-      <NotificationBell token={token} />
+      <NotificationBell token={token} onNavigate={onNotificationNavigate} />
 
       {/* Settings */}
       <button id="lk-coach-settings" onClick={onSettings} style={iconBtnStyle} aria-label="Settings">
@@ -1371,10 +1387,12 @@ function PostJobSheet({
   token,
   onClose,
   onPosted,
+  isMobile = false,
 }: {
   token: string;
   onClose: () => void;
   onPosted: () => void;
+  isMobile?: boolean;
 }) {
   const [docType, setDocType]   = useState<DocType>("SPA signing");
   const [venue, setVenue]       = useState("");
@@ -1423,23 +1441,27 @@ function PostJobSheet({
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, background: "rgba(15,31,51,0.4)",
-        zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 24,
+        zIndex: 200, display: "flex",
+        alignItems: isMobile ? "flex-end" : "center", justifyContent: "center",
+        padding: isMobile ? 0 : 24,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#FFFFFF", borderRadius: 20, width: "100%", maxWidth: 440,
-          maxHeight: "90vh", overflowY: "auto",
+          background: "#FFFFFF",
+          borderRadius: isMobile ? "20px 20px 0 0" : 20,
+          width: "100%", maxWidth: isMobile ? "100%" : 440,
+          maxHeight: isMobile ? "92dvh" : "90vh",
+          display: "flex", flexDirection: "column",
           boxShadow: "0 24px 48px -12px rgba(15,31,51,0.28)",
         }}
       >
-        <div style={{ padding: "24px 24px 20px", borderBottom: "1px solid var(--hair)", position: "relative" }}>
+        <div style={{ padding: isMobile ? "18px 20px 14px" : "24px 24px 20px", borderBottom: "1px solid var(--hair)", position: "relative", flexShrink: 0 }}>
           <button
             onClick={onClose}
             aria-label="Close"
-            style={{ position: "absolute", top: 16, right: 16, background: "transparent", border: "none", cursor: "pointer", color: "var(--warm-grey)", display: "flex", padding: 4 }}
+            style={{ position: "absolute", top: isMobile ? 14 : 16, right: isMobile ? 14 : 16, background: "transparent", border: "none", cursor: "pointer", color: "var(--warm-grey)", display: "flex", padding: 4 }}
           >
             <Icon d={I.close} size={18} />
           </button>
@@ -1461,7 +1483,7 @@ function PostJobSheet({
           </div>
         </div>
 
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ padding: isMobile ? "16px 20px" : "20px 24px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", flex: 1, minHeight: 0 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
             Document type
             <select value={docType} onChange={(e) => setDocType(e.target.value as DocType)} style={fieldStyle()}>
@@ -1484,7 +1506,7 @@ function PostJobSheet({
             <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Petaling Jaya" style={fieldStyle()} />
           </label>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10 }}>
             <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
               Date
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={fieldStyle()} />
@@ -1514,7 +1536,14 @@ function PostJobSheet({
           )}
         </div>
 
-        <div style={{ padding: "4px 24px 24px" }}>
+        <div
+          style={{
+            padding: isMobile ? "12px 20px" : "4px 24px 24px",
+            paddingBottom: isMobile ? "max(16px, env(safe-area-inset-bottom))" : undefined,
+            borderTop: "1px solid var(--hair)",
+            flexShrink: 0,
+          }}
+        >
           <button
             className="lk-btn lk-btn--accent lk-btn--lg"
             disabled={!valid || busy}
@@ -1654,6 +1683,9 @@ export default function Dashboard({
     minFee: 50,
   });
   const [view, setView]               = useState<"browse" | "my-jobs" | "picked" | "tasks">("browse");
+  // Set when a notification click-through wants Task list to open on a
+  // specific tab (e.g. "interest_received" → confirm tab).
+  const [taskInitialTab, setTaskInitialTab] = useState<TaskTab | undefined>(undefined);
   const [showSettings, setShowSettings] = useState(false);
   const [displayName, setDisplayName]   = useState(userName);
   const [pickedFilter, setPickedFilter] = useState<StatusFilter>("today");
@@ -1758,6 +1790,11 @@ export default function Dashboard({
   };
   const onPost = () => setShowPostSheet(true);
 
+  function handleNotificationNavigate(target: NotificationTarget) {
+    setView(target.view);
+    if (target.taskTab) setTaskInitialTab(target.taskTab);
+  }
+
   return (
     <div
       style={{
@@ -1774,6 +1811,7 @@ export default function Dashboard({
           onTasks={() => setView("tasks")}
           tasksActive={view === "tasks"}
           token={token}
+          onNotificationNavigate={handleNotificationNavigate}
         />
       )}
 
@@ -1880,6 +1918,7 @@ export default function Dashboard({
                       token={token}
                       pickedJobs={pickedJobs}
                       onNavigate={(v) => setView(v)}
+                      initialTab={taskInitialTab}
                     />
                   ) : view === "my-jobs" ? (
                     <MyJobs
@@ -1991,6 +2030,7 @@ export default function Dashboard({
       {showPostSheet && (
         <PostJobSheet
           token={token}
+          isMobile={isMobile}
           onClose={() => setShowPostSheet(false)}
           onPosted={() => {
             setShowPostSheet(false);

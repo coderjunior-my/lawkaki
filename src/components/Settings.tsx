@@ -221,17 +221,31 @@ function isValidEmail(email: string): boolean {
 }
 
 /* ============================================================
+   Responsive helper
+   ============================================================ */
+function useIsMobile(bp = 768) {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const update = () => setMobile(window.innerWidth < bp);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [bp]);
+  return mobile;
+}
+
+/* ============================================================
    Profile tab
    ============================================================ */
 interface BankDetails { bankName: string; accountNumber: string; accountHolderName: string }
 const ACCOUNT_NUMBER_RE = /^\d{6,20}$/;
 
 function ProfileTab({
-  user, setUser, onSignOut, token, bankDetails, onBankDetailsSaved, focusPayment,
+  user, setUser, onSignOut, token, bankDetails, onBankDetailsSaved, focusPayment, isMobile = false,
 }: {
   user: User; setUser: (u: User) => void; onSignOut?: () => void;
   token?: string; bankDetails?: BankDetails | null; onBankDetailsSaved?: (d: BankDetails) => void;
-  focusPayment?: boolean;
+  focusPayment?: boolean; isMobile?: boolean;
 }) {
   const [editing, setEditing]     = useState(false);
   const [draft, setDraft]         = useState<User>({ ...user });
@@ -318,12 +332,12 @@ function ProfileTab({
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
       {/* Profile header card */}
-      <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, padding:"24px 28px", display:"flex", alignItems:"center", gap:20 }}>
-        <div style={{ width:72, height:72, borderRadius:999, background:"var(--black)", color:"var(--off-white)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontWeight:700, flexShrink:0 }}>
+      <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, padding: isMobile ? "18px 18px" : "24px 28px", display:"flex", alignItems:"center", gap: isMobile ? 14 : 20, flexWrap:"wrap" }}>
+        <div style={{ width: isMobile ? 56 : 72, height: isMobile ? 56 : 72, borderRadius:999, background:"var(--black)", color:"var(--off-white)", display:"flex", alignItems:"center", justifyContent:"center", fontSize: isMobile ? 18 : 24, fontWeight:700, flexShrink:0 }}>
           {user.initials}
         </div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:22, fontWeight:700, letterSpacing:"-0.02em", lineHeight:1.2 }}>{user.name}</div>
+        <div style={{ flex:1, minWidth: isMobile ? 180 : undefined }}>
+          <div style={{ fontSize: isMobile ? 18 : 22, fontWeight:700, letterSpacing:"-0.02em", lineHeight:1.2 }}>{user.name}</div>
           <div style={{ fontSize:14, color:"var(--warm-grey)", marginTop:4 }}>{user.firm}</div>
           <div style={{ display:"flex", gap:12, marginTop:10, flexWrap:"wrap" }}>
             <span className="lk-chip lk-chip--sm lk-chip--solid">{roleLabels[user.role]}</span>
@@ -331,7 +345,7 @@ function ProfileTab({
             <span className="lk-chip lk-chip--sm"><Ic d={IC.briefcase} size={12}/>{user.totalJobs} jobs</span>
           </div>
         </div>
-        <div style={{ textAlign:"right", flexShrink:0 }}>
+        <div style={{ textAlign: isMobile ? "left" : "right", flexShrink:0 }}>
           <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase" }}>Member since</div>
           <div style={{ fontSize:15, fontWeight:700, marginTop:4 }}>{user.joinedDate}</div>
           <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:2 }}>{user.joinedDays} days</div>
@@ -878,28 +892,65 @@ function BillingTab({ token }: { token?: string }) {
 /* ============================================================
    Layout
    ============================================================ */
-function SettingsNav({ onBack, initials }: { onBack?: () => void; initials: string }) {
+function SettingsNav({ onBack, initials, isMobile = false }: { onBack?: () => void; initials: string; isMobile?: boolean }) {
   return (
-    <header style={{ height:64, background:"#FFF", borderBottom:"1px solid var(--hair)", display:"flex", alignItems:"center", padding:"0 24px", gap:20, flexShrink:0 }}>
-      <a href="/" style={{ display:"flex", alignItems:"center", gap:12, textDecoration:"none", flexShrink:0 }}>
+    <header style={{
+      height: 64, background:"#FFF", borderBottom:"1px solid var(--hair)", display:"flex", alignItems:"center",
+      padding: isMobile ? "0 12px" : "0 24px", gap: isMobile ? 10 : 20, flexShrink:0,
+      position:"sticky", top:0, zIndex:30,
+    }}>
+      <a href="/" style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 12, textDecoration:"none", flexShrink:0 }}>
         <svg width="32" height="40" viewBox="0 0 80 100" fill="none">
           <path d="M40 4 C 60.4 4 76 19.6 76 40 C 76 53.6 67.5 66 56 76 L 40 96 L 24 76 C 12.5 66 4 53.6 4 40 C 4 19.6 19.6 4 40 4 Z" fill="#0F1F33"/>
         </svg>
         <div>
           <div style={{ fontSize:20, fontWeight:700, letterSpacing:"-0.02em", lineHeight:1.1, color:"var(--black)" }}>Law Kaki</div>
-          <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:500 }}>Your best legal kaki on the ground.</div>
+          {!isMobile && (
+            <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:500 }}>Your best legal kaki on the ground.</div>
+          )}
         </div>
       </a>
       <div style={{ flex:1 }}/>
-      <button onClick={onBack} style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:13, fontWeight:600, color:"var(--warm-grey)", background:"transparent", border:"none", cursor:"pointer", fontFamily:"inherit", padding:"8px 14px", borderRadius:999 }}>
-        <Ic d={IC.arrowL} size={16}/> Back to dashboard
+      <button
+        onClick={onBack}
+        aria-label="Back to dashboard"
+        title="Back to dashboard"
+        style={{
+          display:"inline-flex", alignItems:"center", gap:6, fontSize:13, fontWeight:600, color:"var(--warm-grey)",
+          background:"transparent", border:"none", cursor:"pointer", fontFamily:"inherit",
+          padding: isMobile ? 8 : "8px 14px", borderRadius:999,
+        }}
+      >
+        <Ic d={IC.arrowL} size={16}/> {!isMobile && "Back to dashboard"}
       </button>
-      <div className="lk-avatar" style={{ background:"var(--black)", color:"var(--off-white)", width:36, height:36, fontSize:13 }}>{initials}</div>
+      <div className="lk-avatar" style={{ background:"var(--black)", color:"var(--off-white)", width:36, height:36, fontSize:13, flexShrink:0 }}>{initials}</div>
     </header>
   );
 }
 
-function SettingsSidebar({ active, onChange }: { active: SettingsTab; onChange: (t: SettingsTab) => void }) {
+function SettingsSidebar({ active, onChange, isMobile = false }: { active: SettingsTab; onChange: (t: SettingsTab) => void; isMobile?: boolean }) {
+  if (isMobile) {
+    return (
+      <nav style={{
+        display:"flex", gap:6, padding:"10px 12px", borderBottom:"1px solid var(--hair)",
+        background:"#FFF", overflowX:"auto", flexShrink:0, position:"sticky", top:64, zIndex:20,
+      }}>
+        {TABS.map(tab => (
+          <button key={tab.id} onClick={() => onChange(tab.id)} style={{
+            display:"flex", alignItems:"center", gap:8, padding:"8px 14px", whiteSpace:"nowrap",
+            background: active===tab.id ? "var(--black)" : "transparent",
+            border:`1px solid ${active===tab.id ? "var(--black)" : "var(--hair)"}`,
+            borderRadius:999, cursor:"pointer", fontFamily:"inherit", fontSize:13,
+            fontWeight: active===tab.id ? 700 : 500,
+            color: active===tab.id ? "var(--off-white)" : "var(--warm-grey)",
+            flexShrink:0,
+          }}>
+            <Ic d={tab.icon} size={16}/>{tab.label}
+          </button>
+        ))}
+      </nav>
+    );
+  }
   return (
     <nav style={{ width:240, flexShrink:0, padding:"20px 12px", borderRight:"1px solid var(--hair)", background:"#FFF", display:"flex", flexDirection:"column", gap:4 }}>
       <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", padding:"8px 12px", marginBottom:4 }}>Settings</div>
@@ -935,6 +986,7 @@ function initialsFrom(name: string): string {
 
 export default function Settings({ onClose, onSignOut, token, userName, userPhone, bankDetails, onBankDetailsSaved, initialTab, focusPayment }: SettingsProps) {
   const [tab, setTab]   = useState<SettingsTab>(initialTab ?? "profile");
+  const isMobile = useIsMobile();
   // The rest of this profile (rating, job count, availability, etc.) is
   // still mock data — see docs/PRD.md — but name/phone are real, since the
   // bank details form below uses the real name as the account holder
@@ -947,13 +999,13 @@ export default function Settings({ onClose, onSignOut, token, userName, userPhon
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:"var(--off-white)" }}>
-      <SettingsNav onBack={onClose} initials={user.initials}/>
-      <div style={{ display:"flex", flex:1, minHeight:0 }}>
-        <SettingsSidebar active={tab} onChange={setTab}/>
-        <main className="lk-scroll" style={{ flex:1, overflowY:"auto", padding:"28px 40px 80px" }}>
+      <SettingsNav onBack={onClose} initials={user.initials} isMobile={isMobile}/>
+      <div style={{ display:"flex", flexDirection: isMobile ? "column" : "row", flex:1, minHeight:0 }}>
+        <SettingsSidebar active={tab} onChange={setTab} isMobile={isMobile}/>
+        <main className="lk-scroll" style={{ flex:1, minHeight:0, overflowY:"auto", padding: isMobile ? "20px 16px 40px" : "28px 40px 80px" }}>
           <div style={{ maxWidth:720 }}>
             <div style={{ marginBottom:24 }}>
-              <h1 style={{ fontSize:28, fontWeight:700, letterSpacing:"-0.025em", margin:"0 0 4px" }}>
+              <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight:700, letterSpacing:"-0.025em", margin:"0 0 4px" }}>
                 {TABS.find(t => t.id===tab)?.label}
               </h1>
               <p style={{ fontSize:14, color:"var(--warm-grey)", margin:0 }}>{TAB_SUBS[tab]}</p>
@@ -962,7 +1014,7 @@ export default function Settings({ onClose, onSignOut, token, userName, userPhon
               <ProfileTab
                 user={user} setUser={setUser} onSignOut={onSignOut}
                 token={token} bankDetails={bankDetails} onBankDetailsSaved={onBankDetailsSaved}
-                focusPayment={focusPayment}
+                focusPayment={focusPayment} isMobile={isMobile}
               />
             )}
             {tab==="history"  && <HistoryTab/>}
