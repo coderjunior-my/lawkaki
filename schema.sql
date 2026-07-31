@@ -297,6 +297,9 @@ GROUP BY poster_id;
 -- keep growing (job_cancelled, review_received, etc.) and each addition
 -- shouldn't need a migration. Known values as of this migration:
 --   'new_job_broadcast'        — new job posted, sent to eligible pickers
+--   'interest_received'        — a picker expressed interest, sent to the poster
+--   'interest_reminder'        — day-3 / day-7 nudge to confirm a pending interest
+--   'job_confirmed'            — poster confirmed a picker, sent to both parties
 --   'appointment_reminder_2h'  — 2 hours before a confirmed appointment
 --   'appointment_reminder_30m' — 30 minutes before a confirmed appointment
 --
@@ -452,3 +455,17 @@ ALTER TABLE users DROP COLUMN IF EXISTS bank_details_added;
 -- =============================================================================
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS bank_account_holder_name VARCHAR(200);
+
+-- =============================================================================
+-- Email uniqueness — added 2026-07-31
+-- The registration form has always collected a law firm email, but it was
+-- never persisted (app-layer bug) and had no uniqueness guard, so nothing
+-- stopped a second account from registering with someone else's email or a
+-- phone number that already had an account (the register upsert would
+-- silently overwrite the existing row). The app layer now checks both
+-- before insert; this index is the DB-level backstop. Case-insensitive
+-- because firm emails are typically typed in mixed case. Existing rows are
+-- all NULL (email was never written), which a unique index permits — NULLs
+-- don't collide with each other in Postgres.
+-- =============================================================================
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users (LOWER(email));

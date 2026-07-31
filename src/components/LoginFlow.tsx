@@ -647,7 +647,7 @@ function ProfileStep({
       const res  = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionToken, name: name.trim(), firmId: firm!.id, role }),
+        body: JSON.stringify({ sessionToken, name: name.trim(), firmId: firm!.id, email: email.trim(), role }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
