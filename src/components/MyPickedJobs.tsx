@@ -34,6 +34,7 @@ const I = {
   msg:    "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
   check:  "M20 6 9 17l-5-5",
   car:    "M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v5M14 17h1m4 0h1M7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  call:   "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z",
 };
 
 /* ============================================================
@@ -129,14 +130,29 @@ function PosterDetail({ job }: { job: PickedJob }) {
         </div>
       </div>
 
-      {/* WhatsApp CTA */}
-      <button
-        onClick={() => job.poster && window.open(`https://wa.me/${job.poster.phone.replace("+", "")}`, "_blank")}
-        style={{ width: "100%", height: 40, background: "var(--black)", color: "var(--off-white)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, letterSpacing: "-0.01em" }}
-      >
-        <Icon d={I.msg} size={15} />
-        Contact via WhatsApp
-      </button>
+      {/* WhatsApp CTA, with a phone call as a fallback if the poster isn't
+          reachable there — WhatsApp is a single point of failure otherwise. */}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={() => job.poster && window.open(`https://wa.me/${job.poster.phone.replace("+", "")}`, "_blank")}
+          style={{ flex: 1, height: 40, background: "var(--black)", color: "var(--off-white)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, letterSpacing: "-0.01em" }}
+        >
+          <Icon d={I.msg} size={15} />
+          WhatsApp
+        </button>
+        <a
+          href={job.poster ? `tel:${job.poster.phone}` : undefined}
+          style={{ flex: 1, height: 40, background: "#FFFFFF", color: "var(--black)", border: "1px solid var(--hair)", borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, letterSpacing: "-0.01em", textDecoration: "none" }}
+        >
+          <Icon d={I.call} size={15} />
+          Call
+        </a>
+      </div>
+      {job.poster && (
+        <div style={{ fontSize: 11, color: "var(--warm-grey)", textAlign: "center" }}>
+          Not answering on WhatsApp? Call {job.poster.name.split(" ")[0]} at {job.poster.phone}.
+        </div>
+      )}
     </div>
   );
 }
