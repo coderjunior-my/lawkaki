@@ -8,12 +8,11 @@ import { PendingReview } from "@/lib/reviews";
 import { PostedJobCard, PickerProfileModal } from "@/components/MyJobs";
 import { PickedJobCard } from "@/components/MyPickedJobs";
 import CircularLoader from "@/components/CircularLoader";
+import type { TaskTab } from "@/lib/notificationActions";
 
 interface PostedJobWithInterests extends Job {
   interests: Interest[];
 }
-
-type TaskTab = "confirm" | "work" | "review";
 
 const REVIEW_MAX_WORDS = 1000;
 
@@ -260,12 +259,20 @@ export default function TaskTracker({
   token = "",
   pickedJobs = [],
   onNavigate,
+  initialTab,
 }: {
   token?:      string;
   pickedJobs?: PickedJob[];
   onNavigate?: (view: "browse" | "my-jobs" | "picked") => void;
+  // Set by a notification click-through (e.g. "interest_received" opens
+  // straight to the confirm tab) — see src/lib/notificationActions.ts.
+  initialTab?: TaskTab;
 }) {
-  const [activeTab, setActiveTab] = useState<TaskTab>("confirm");
+  // Dashboard only ever renders TaskTracker inside a view switch, so it
+  // unmounts/remounts on every visit to "tasks" — this lazy initial state
+  // is enough to land on the right tab for a notification click-through
+  // without needing an effect to re-sync it.
+  const [activeTab, setActiveTab] = useState<TaskTab>(initialTab ?? "confirm");
   const [postedJobs, setPostedJobs] = useState<PostedJobWithInterests[]>([]);
   const [pendingReviews, setPendingReviews] = useState<PendingReview[]>([]);
   const [loadingPosted, setLoadingPosted] = useState(true);

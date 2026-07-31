@@ -155,7 +155,7 @@ export async function confirmPickerForInterest(opts: {
     .from("jobs")
     .select(`
       id, state, venue, doc_type, appointment_at,
-      poster:users!jobs_poster_id_fkey (name, phone)
+      poster:users!jobs_poster_id_fkey (id, name, phone)
     `)
     .eq("id", opts.jobId)
     .single();
@@ -193,19 +193,43 @@ export async function confirmPickerForInterest(opts: {
 
   const poster = Array.isArray(job.poster) ? job.poster[0] : job.poster;
 
-  if (flags.whatsappNotifications && poster) {
+  if (poster) {
     const { date, time } = fmtApptDateTime(job.appointment_at);
-    notifyConfirmation({
-      pickerPhone:     picker.phone,
-      pickerFirstName: picker.name.split(" ")[0],
-      posterPhone:     poster.phone,
-      posterFirstName: poster.name.split(" ")[0],
-      venue:   job.venue,
-      docType: job.doc_type,
-      date, time,
-    }).catch((err) => console.error("[WhatsApp] confirm notify failed:", err));
-  } else {
-    console.log(`[Confirm] ${picker.name} confirmed for job ${opts.jobId}`);
+
+    let whatsappSent = false;
+    if (flags.whatsappNotifications) {
+      whatsappSent = await notifyConfirmation({
+        pickerPhone:     picker.phone,
+        pickerFirstName: picker.name.split(" ")[0],
+        posterPhone:     poster.phone,
+        posterFirstName: poster.name.split(" ")[0],
+        venue:   job.venue,
+        docType: job.doc_type,
+        date, time,
+      }).then(() => true).catch((err) => {
+        console.error("[WhatsApp] confirm notify failed:", err);
+        return false;
+      });
+    } else {
+      console.log(`[Confirm] ${picker.name} confirmed for job ${opts.jobId}`);
+    }
+
+    await Promise.all([
+      createNotification({
+        userId: picker.id,
+        jobId: opts.jobId, type: "job_confirmed", role: "picker",
+        title: "Confirmed, kaki",
+        body:  `${job.venue} · ${job.doc_type} · ${time}, ${date}`,
+        whatsappSent,
+      }),
+      createNotification({
+        userId: poster.id,
+        jobId: opts.jobId, type: "job_confirmed", role: "poster",
+        title: `${picker.name.split(" ")[0]} is covering your job`,
+        body:  `${job.venue} · ${job.doc_type} · ${time}, ${date}`,
+        whatsappSent,
+      }),
+    ]);
   }
 
   return { ok: true, data: undefined };

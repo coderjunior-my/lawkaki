@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { notifyInterestReminder } from "@/lib/whatsapp";
 import { flags } from "@/lib/featureFlags";
+import { createNotification } from "@/lib/notifications";
 
 // POST /api/cron/sweep — hourly sweep, triggered by Supabase pg_cron/pg_net
 // (see schema.sql). Two jobs:
@@ -16,7 +17,7 @@ const INTEREST_SELECT = `
   picker:users!job_interests_picker_id_fkey (name),
   job:jobs!job_interests_job_id_fkey (
     venue, doc_type, appointment_at,
-    poster:users!jobs_poster_id_fkey (name, phone)
+    poster:users!jobs_poster_id_fkey (id, name, phone)
   )
 `;
 
@@ -28,20 +29,37 @@ async function sendReminders(rows: any[], stage: 1 | 2) {
     const poster = job && (Array.isArray(job.poster) ? job.poster[0] : job.poster);
     if (!job || !poster || !picker) continue;
 
+    const appt = new Date(job.appointment_at);
+    const date = appt.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short", timeZone: MYT });
+    const time = appt.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: MYT });
+
+    let whatsappSent = false;
     if (flags.whatsappNotifications) {
-      const appt = new Date(job.appointment_at);
-      await notifyInterestReminder({
+      whatsappSent = await notifyInterestReminder({
         posterPhone:     poster.phone,
         posterFirstName: poster.name.split(" ")[0],
         pickerName:      picker.name,
         venue:   job.venue,
         docType: job.doc_type,
-        date: appt.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short", timeZone: MYT }),
-        time: appt.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: MYT }),
+        date, time,
         confirmCode: row.confirm_code,
         stage,
-      }).catch((err) => console.error("[WhatsApp] interest reminder failed:", err));
+      }).then(() => true).catch((err) => {
+        console.error("[WhatsApp] interest reminder failed:", err);
+        return false;
+      });
     }
+
+    const nudge = stage === 1
+      ? `${picker.name} is still waiting on your confirmation`
+      : `Last call to confirm ${picker.name}`;
+    await createNotification({
+      userId: poster.id,
+      jobId: row.job_id, type: "interest_reminder", role: "poster",
+      title: nudge,
+      body:  `${job.venue} · ${job.doc_type} · ${time}, ${date}`,
+      whatsappSent,
+    });
 
     await supabase
       .from("job_interests")

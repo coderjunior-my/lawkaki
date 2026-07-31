@@ -130,6 +130,9 @@ export interface PickerRating {
 // this exists alongside (not instead of) the WhatsApp send.
 export type NotificationType =
   | "new_job_broadcast"
+  | "interest_received"
+  | "interest_reminder"
+  | "job_confirmed"
   | "appointment_reminder_2h"
   | "appointment_reminder_30m";
 
