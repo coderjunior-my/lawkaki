@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { notifyPosterOfInterest } from "@/lib/whatsapp";
 import { flags } from "@/lib/featureFlags";
+import { recordInterest } from "@/lib/jobActions";
+import { createNotification } from "@/lib/notifications";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -22,7 +24,7 @@ export async function POST(req: NextRequest) {
     .from("jobs")
     .select(`
       id, state, venue, doc_type, appointment_at,
-      poster:users!jobs_poster_id_fkey (name, phone)
+      poster:users!jobs_poster_id_fkey (id, name, phone)
     `)
     .eq("id", jobId)
     .single();
@@ -30,39 +32,49 @@ export async function POST(req: NextRequest) {
   if (!job) {
     return NextResponse.json({ error: "Job not found." }, { status: 404 });
   }
-  if (job.state === "taken" || job.state === "completed" || job.state === "cancelled") {
+  if (job.state !== "open" && job.state !== "urgent") {
     return NextResponse.json({ error: "This job is no longer available." }, { status: 409 });
   }
 
-  // Record interest if picker has an account
+  // Record interest (with a confirm code for the WhatsApp reply) if picker has an account
   const { data: picker } = await supabase
     .from("users")
     .select("id")
     .eq("phone", pickerPhone)
     .single();
 
-  if (picker) {
-    await supabase
-      .from("job_interests")
-      .upsert(
-        { job_id: jobId, picker_id: picker.id },
-        { onConflict: "job_id,picker_id", ignoreDuplicates: true },
-      );
-  }
+  const interest = picker ? await recordInterest(jobId, picker.id) : null;
 
   const poster = Array.isArray(job.poster) ? job.poster[0] : job.poster;
 
-  if (flags.whatsappNotifications && poster) {
+  if (poster && interest) {
     const appt = new Date(job.appointment_at);
-    notifyPosterOfInterest({
-      posterPhone:     poster.phone,
-      posterFirstName: poster.name.split(" ")[0],
-      pickerName,
-      venue:    job.venue,
-      docType:  job.doc_type,
-      date:     appt.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kuala_Lumpur" }),
-      time:     appt.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kuala_Lumpur" }),
-    }).catch((err) => console.error("[WhatsApp] interest notify failed:", err));
+    const date = appt.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kuala_Lumpur" });
+    const time = appt.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kuala_Lumpur" });
+
+    let whatsappSent = false;
+    if (flags.whatsappNotifications) {
+      whatsappSent = await notifyPosterOfInterest({
+        posterPhone:     poster.phone,
+        posterFirstName: poster.name.split(" ")[0],
+        pickerName,
+        venue:    job.venue,
+        docType:  job.doc_type,
+        date, time,
+        confirmCode: interest.confirmCode,
+      }).then(() => true).catch((err) => {
+        console.error("[WhatsApp] interest notify failed:", err);
+        return false;
+      });
+    }
+
+    await createNotification({
+      userId: poster.id,
+      jobId,  type: "interest_received", role: "poster",
+      title:  `${pickerName} wants to cover your job`,
+      body:   `${job.venue} · ${job.doc_type} · ${time}, ${date}`,
+      whatsappSent,
+    });
   } else {
     console.log(`[Interest] ${pickerName} (${pickerPhone}) → job ${jobId}`);
   }

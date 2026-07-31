@@ -20,7 +20,7 @@ export type MalaysianState =
 
 export type UserRole = "poster" | "picker" | "both";
 export type UserStatus = "pending" | "active" | "suspended";
-export type JobState = "open" | "urgent" | "taken" | "completed" | "cancelled";
+export type JobState = "open" | "urgent" | "taken" | "completed" | "cancelled" | "expired";
 export type DocType =
   | "SPA signing"
   | "Loan documentation"
@@ -124,4 +124,27 @@ export interface PickerRating {
   avgPunctuality: number;
   avgProfessionalism: number;
   avgCompleteness: number;
+}
+
+// In-app fallback for every WhatsApp-worthy event — see schema.sql for why
+// this exists alongside (not instead of) the WhatsApp send.
+export type NotificationType =
+  | "new_job_broadcast"
+  | "interest_received"
+  | "interest_reminder"
+  | "job_confirmed"
+  | "appointment_reminder_2h"
+  | "appointment_reminder_30m";
+
+export interface Notification {
+  id: string;
+  userId: string;
+  jobId: string | null;
+  type: NotificationType;
+  role: "poster" | "picker"; // which hat the user was wearing for this event
+  title: string;
+  body: string | null;
+  whatsappSentAt: Date | null;
+  readAt: Date | null;
+  createdAt: Date;
 }

@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useMemo, useEffect, CSSProperties } from "react";
+import { useState, useMemo, useEffect, useCallback, CSSProperties } from "react";
 import { Job } from "@/lib/jobs";
+import { DocType } from "@/lib/types";
 import MyJobs from "@/components/MyJobs";
 import MyPickedJobs from "@/components/MyPickedJobs";
 import ReminderPopup from "@/components/ReminderPopup";
 import { PickedJob, StatusFilter, getTodayISO, parseTimeToMins } from "@/lib/pickedJobs";
 import TaskTracker from "@/components/TaskTracker";
 import Settings from "@/components/Settings";
+import CoachmarkTour from "@/components/CoachmarkTour";
+import CriticalNotice from "@/components/CriticalNotice";
+import { getNotificationTarget, NotificationTarget, TaskTab } from "@/lib/notificationActions";
 
 /* ============================================================
    Icon — inline Lucide-style SVGs
@@ -75,56 +79,238 @@ const I = {
     "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
     "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z",
   ],
+  tasks: [
+    "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2",
+    "M9 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V3z",
+    "m9 14 2 2 4-4",
+  ],
 };
 
 /* ============================================================
    Logo mark
    ============================================================ */
-function LogoMark() {
+function LogoMark({ isMobile = false }: { isMobile?: boolean }) {
   return (
-    <a href="/" style={{ display: "flex", alignItems: "center", gap: 12, textDecoration: "none", flexShrink: 0 }}>
+    <a href="/" style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12, textDecoration: "none", flexShrink: 0 }}>
       <svg width="32" height="40" viewBox="0 0 80 100" fill="none" aria-hidden>
         <path
           d="M40 4 C60.4 4 76 19.6 76 40 C76 53.6 67.5 66 56 76 L40 96 L24 76 C12.5 66 4 53.6 4 40 C4 19.6 19.6 4 40 4 Z"
           fill="#0F1F33"
         />
-        <g fill="#FAF7F2" transform="translate(40 42) scale(0.34) translate(-30 -50)">
-          <ellipse cx="30" cy="64" rx="18" ry="28" />
-          <ellipse cx="14" cy="32" rx="4.4" ry="5.4" />
-          <ellipse cx="23" cy="22" rx="4" ry="4.8" />
-          <ellipse cx="32" cy="18" rx="3.6" ry="4.4" />
-          <ellipse cx="41" cy="22" rx="3.2" ry="4" />
-          <ellipse cx="48" cy="30" rx="2.8" ry="3.4" />
-        </g>
       </svg>
       <div>
         <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1, color: "var(--black)" }}>Law Kaki</div>
-        <div style={{ fontSize: 11, color: "var(--warm-grey)", fontWeight: 500 }}>Your best legal kaki on the ground.</div>
+        {!isMobile && (
+          <div style={{ fontSize: 11, color: "var(--warm-grey)", fontWeight: 500 }}>Your best legal kaki on the ground.</div>
+        )}
       </div>
     </a>
   );
 }
 
 /* ============================================================
+   Notifications — bell dropdown, split by role
+   ============================================================ */
+interface NotificationItem {
+  id: string;
+  jobId: string | null;
+  type: string;
+  role: "poster" | "picker";
+  title: string;
+  body: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+function timeAgo(iso: string): string {
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.floor(hr / 24)}d ago`;
+}
+
+function NotificationBell({
+  token = "",
+  onNavigate,
+}: {
+  token?: string;
+  onNavigate?: (target: NotificationTarget) => void;
+}) {
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [userRole, setUserRole]           = useState<"poster" | "picker" | "both">("both");
+  const [open, setOpen]                   = useState(false);
+  // null until the user explicitly picks a tab — defaults to their role once fetched.
+  const [manualTab, setManualTab]         = useState<"poster" | "picker" | null>(null);
+  const tab = manualTab ?? (userRole === "poster" ? "poster" : "picker");
+
+  const refresh = useCallback(() => {
+    if (!token) return;
+    fetch("/api/notifications", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        setUserRole(d.role ?? "both");
+        setNotifications(d.notifications ?? []);
+      })
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const visible     = userRole === "both" ? notifications.filter((n) => n.role === tab) : notifications;
+  const unreadCount = notifications.filter((n) => !n.readAt).length;
+  const visibleUnreadIds = visible.filter((n) => !n.readAt).map((n) => n.id);
+
+  async function markRead(ids: string[]) {
+    if (!ids.length) return;
+    const now = new Date().toISOString();
+    setNotifications((prev) => prev.map((n) => (ids.includes(n.id) ? { ...n, readAt: n.readAt ?? now } : n)));
+    if (!token) return;
+    try {
+      await fetch("/api/notifications/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(ids.length === 1 ? { id: ids[0] } : { ids }),
+      });
+    } catch {
+      // Best-effort — local state already reflects read, will reconcile on next refresh
+    }
+  }
+
+  return (
+    <div id="lk-coach-bell" style={{ position: "relative" }}>
+      <button
+        onClick={() => { const next = !open; setOpen(next); if (next) refresh(); }}
+        style={iconBtnStyle}
+        aria-label="Notifications"
+      >
+        <Icon d={I.bell} size={20} />
+        {unreadCount > 0 && (
+          <span
+            style={{
+              position: "absolute", top: 8, right: 8, width: 8, height: 8,
+              background: "var(--amber)", borderRadius: 999, border: "2px solid #FFFFFF",
+            }}
+          />
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 250 }} onClick={() => setOpen(false)} />
+          <div
+            style={{
+              position: "absolute", top: "calc(100% + 10px)", right: 0, zIndex: 251,
+              width: 360, maxWidth: "calc(100vw - 24px)", maxHeight: 460,
+              background: "#FFFFFF", border: "1px solid var(--hair)", borderRadius: 16,
+              boxShadow: "0 24px 48px -12px rgba(15,31,51,0.28)",
+              display: "flex", flexDirection: "column", overflow: "hidden",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--hair)" }}>
+              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.01em" }}>Notifications</div>
+              {visibleUnreadIds.length > 0 && (
+                <button
+                  onClick={() => markRead(visibleUnreadIds)}
+                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--black)", fontFamily: "inherit", fontSize: 12, fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3, padding: 0 }}
+                >
+                  Mark all as read
+                </button>
+              )}
+            </div>
+
+            {userRole === "both" && (
+              <div style={{ display: "flex", gap: 6, padding: "10px 12px", borderBottom: "1px solid var(--hair)" }}>
+                {(["picker", "poster"] as const).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setManualTab(r)}
+                    style={{
+                      padding: "6px 12px", borderRadius: 999, whiteSpace: "nowrap",
+                      border: `1px solid ${tab === r ? "var(--black)" : "var(--hair)"}`,
+                      background: tab === r ? "var(--black)" : "#FFFFFF",
+                      color: tab === r ? "var(--off-white)" : "var(--black)",
+                      fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                    }}
+                  >
+                    {r === "picker" ? "As picker" : "As poster"}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="lk-scroll" style={{ overflowY: "auto", flex: 1 }}>
+              {visible.length === 0 ? (
+                <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--warm-grey)", fontSize: 13 }}>
+                  No notifications yet.
+                </div>
+              ) : (
+                visible.map((n) => {
+                  const unread = !n.readAt;
+                  const target = getNotificationTarget(n.type, n.role);
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => {
+                        markRead([n.id]);
+                        if (target && onNavigate) {
+                          onNavigate(target);
+                          setOpen(false);
+                        }
+                      }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left",
+                        padding: "12px 16px", background: unread ? "var(--off-white)" : "#FFFFFF",
+                        border: "none", borderBottom: "1px solid var(--pale-grey)",
+                        cursor: target ? "pointer" : "default", fontFamily: "inherit",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <span
+                          style={{
+                            width: 6, height: 6, borderRadius: 999, marginTop: 6, flexShrink: 0,
+                            background: unread ? "var(--amber)" : "transparent",
+                          }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: unread ? 700 : 500, color: "var(--black)" }}>{n.title}</div>
+                          {n.body && (
+                            <div style={{ fontSize: 12, color: "var(--warm-grey)", marginTop: 2, lineHeight: 1.4 }}>{n.body}</div>
+                          )}
+                          <div style={{ fontSize: 11, color: "var(--warm-grey)", marginTop: 4 }}>{timeAgo(n.createdAt)}</div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
    TopNav
    ============================================================ */
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0][0].toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 function TopNav({
   isMobile = false,
-  onSignOut,
   onSettings,
-  userName = "",
+  onTasks,
+  tasksActive = false,
+  token = "",
+  onNotificationNavigate,
 }: {
   isMobile?: boolean;
-  onSignOut?: () => void;
   onSettings?: () => void;
-  userName?: string;
+  onTasks?: () => void;
+  tasksActive?: boolean;
+  token?: string;
+  onNotificationNavigate?: (target: NotificationTarget) => void;
 }) {
   return (
     <header
@@ -134,12 +320,12 @@ function TopNav({
         borderBottom: "1px solid var(--hair)",
         display: "flex",
         alignItems: "center",
-        padding: "0 24px",
-        gap: 24,
+        padding: isMobile ? "0 12px" : "0 24px",
+        gap: isMobile ? 10 : 24,
         flexShrink: 0,
       }}
     >
-      <LogoMark />
+      <LogoMark isMobile={isMobile} />
 
       {/* Search */}
       <div style={{ flex: 1, maxWidth: 420, marginLeft: 16, position: "relative", display: isMobile ? "none" : undefined }}>
@@ -177,58 +363,24 @@ function TopNav({
 
       <div style={{ flex: 1 }} />
 
-      {/* Bell */}
-      <button style={iconBtnStyle} aria-label="Notifications">
-        <Icon d={I.bell} size={20} />
-        <span
-          style={{
-            position: "absolute",
-            top: 8,
-            right: 8,
-            width: 8,
-            height: 8,
-            background: "var(--amber)",
-            borderRadius: 999,
-            border: "2px solid #FFFFFF",
-          }}
-        />
+      {/* Tasks — jump straight to the task tracker */}
+      <button
+        id="lk-coach-tasks"
+        onClick={onTasks}
+        style={tasksActive ? iconBtnActiveStyle : iconBtnStyle}
+        aria-label="Tasks"
+        aria-current={tasksActive ? "page" : undefined}
+        title="Tasks"
+      >
+        <Icon d={I.tasks} size={19} />
       </button>
 
-      {/* User avatar */}
-      {userName && (
-        <div
-          className="lk-avatar lk-avatar--sm"
-          style={{ background: "var(--black)", color: "var(--off-white)", flexShrink: 0 }}
-          title={userName}
-        >
-          {getInitials(userName)}
-        </div>
-      )}
+      {/* Bell */}
+      <NotificationBell token={token} onNavigate={onNotificationNavigate} />
 
       {/* Settings */}
-      <button onClick={onSettings} style={iconBtnStyle} aria-label="Settings">
+      <button id="lk-coach-settings" onClick={onSettings} style={iconBtnStyle} aria-label="Settings">
         <Icon d={I.gear} size={18} />
-      </button>
-
-      {/* Sign out */}
-      <button
-        onClick={onSignOut}
-        style={{
-          ...iconBtnStyle,
-          ...(isMobile ? {} : {
-            width: "auto",
-            padding: "0 14px",
-            gap: 7,
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: "inherit",
-            color: "var(--warm-grey)",
-          }),
-        }}
-        aria-label="Sign out"
-      >
-        <Icon d={I.logout} size={16} />
-        {!isMobile && <span>Sign out</span>}
       </button>
     </header>
   );
@@ -246,6 +398,13 @@ const iconBtnStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  flexShrink: 0,
+};
+
+const iconBtnActiveStyle: CSSProperties = {
+  ...iconBtnStyle,
+  background: "var(--black)",
+  color: "var(--off-white)",
 };
 
 /* ============================================================
@@ -271,6 +430,7 @@ function FilterBar({
 }) {
   return (
     <div
+      id="lk-coach-filters"
       style={{
         padding: "14px 18px",
         background: "#FFFFFF",
@@ -1119,6 +1279,7 @@ function MapArea({
 
       {/* Post a job FAB */}
       <button
+        id="lk-coach-post"
         onClick={onPost}
         className="lk-btn lk-btn--accent"
         style={{
@@ -1196,6 +1357,203 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
         style={{ width: 6, height: 6, borderRadius: 999, background: "var(--amber)", flexShrink: 0 }}
       />
       {message}
+    </div>
+  );
+}
+
+/* ============================================================
+   Post a job sheet
+   ============================================================ */
+const NEW_JOB_DOC_TYPES: DocType[] = [
+  "SPA signing",
+  "Loan documentation",
+  "Discharge of Charge",
+  "Transfer at Land Office",
+  "Stamping at LHDN",
+  "Other",
+];
+
+function fieldStyle(): CSSProperties {
+  return {
+    width: "100%", boxSizing: "border-box",
+    height: 40, padding: "0 12px",
+    border: "1px solid var(--hair)", borderRadius: 8,
+    fontSize: 13, color: "var(--black)", fontFamily: "inherit",
+    background: "#FFFFFF", outline: "none",
+  };
+}
+
+function PostJobSheet({
+  token,
+  onClose,
+  onPosted,
+  isMobile = false,
+}: {
+  token: string;
+  onClose: () => void;
+  onPosted: () => void;
+  isMobile?: boolean;
+}) {
+  const [docType, setDocType]   = useState<DocType>("SPA signing");
+  const [venue, setVenue]       = useState("");
+  const [address, setAddress]   = useState("");
+  const [area, setArea]         = useState("");
+  const [date, setDate]         = useState("");
+  const [time, setTime]         = useState("");
+  const [fee, setFee]           = useState("");
+  const [notes, setNotes]       = useState("");
+  const [busy, setBusy]         = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+
+  const valid = venue.trim() && address.trim() && date && time && fee !== "" && Number(fee) >= 0;
+
+  async function handleSubmit() {
+    if (!valid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const appointmentAt = `${date}T${time}:00+08:00`; // MYT, no DST
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          docType, venue: venue.trim(), address: address.trim(),
+          area: area.trim() || undefined,
+          appointmentAt, feeIndicative: Number(fee),
+          notes: notes.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? "Failed to post job.");
+        setBusy(false);
+        return;
+      }
+      onPosted();
+    } catch {
+      setError("Failed to post job. Check your connection and try again.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(15,31,51,0.4)",
+        zIndex: 200, display: "flex",
+        alignItems: isMobile ? "flex-end" : "center", justifyContent: "center",
+        padding: isMobile ? 0 : 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#FFFFFF",
+          borderRadius: isMobile ? "20px 20px 0 0" : 20,
+          width: "100%", maxWidth: isMobile ? "100%" : 440,
+          maxHeight: isMobile ? "92dvh" : "90vh",
+          display: "flex", flexDirection: "column",
+          boxShadow: "0 24px 48px -12px rgba(15,31,51,0.28)",
+        }}
+      >
+        <div style={{ padding: isMobile ? "18px 20px 14px" : "24px 24px 20px", borderBottom: "1px solid var(--hair)", position: "relative", flexShrink: 0 }}>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{ position: "absolute", top: isMobile ? 14 : 16, right: isMobile ? 14 : 16, background: "transparent", border: "none", cursor: "pointer", color: "var(--warm-grey)", display: "flex", padding: 4 }}
+          >
+            <Icon d={I.close} size={18} />
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none",
+              cursor: "pointer", color: "var(--warm-grey)", fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+              padding: "0 0 12px", marginLeft: -2,
+            }}
+          >
+            <Icon d={I.chevL} size={16} /> Back
+          </button>
+          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--black)" }}>
+            Post a job
+          </div>
+          <div style={{ fontSize: 13, color: "var(--warm-grey)", marginTop: 4 }}>
+            Eligible pickers nearby will be notified.
+          </div>
+        </div>
+
+        <div style={{ padding: isMobile ? "16px 20px" : "20px 24px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", flex: 1, minHeight: 0 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
+            Document type
+            <select value={docType} onChange={(e) => setDocType(e.target.value as DocType)} style={fieldStyle()}>
+              {NEW_JOB_DOC_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
+            Venue
+            <input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. Ara Damansara Condo" style={fieldStyle()} />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
+            Address
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Full address" style={fieldStyle()} />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
+            Area (optional)
+            <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Petaling Jaya" style={fieldStyle()} />
+          </label>
+
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10 }}>
+            <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
+              Date
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={fieldStyle()} />
+            </label>
+            <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
+              Time
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={fieldStyle()} />
+            </label>
+          </div>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
+            Indicative commission (RM)
+            <input type="number" min={0} value={fee} onChange={(e) => setFee(e.target.value)} placeholder="150" style={fieldStyle()} />
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--warm-grey)" }}>
+            Notes (optional)
+            <textarea
+              value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+              placeholder="Anything the picker should know"
+              style={{ ...fieldStyle(), height: "auto", padding: "10px 12px", resize: "none", lineHeight: 1.5 }}
+            />
+          </label>
+
+          {error && (
+            <p style={{ color: "var(--red)", fontSize: 12.5, fontWeight: 600, margin: 0 }}>{error}</p>
+          )}
+        </div>
+
+        <div
+          style={{
+            padding: isMobile ? "12px 20px" : "4px 24px 24px",
+            paddingBottom: isMobile ? "max(16px, env(safe-area-inset-bottom))" : undefined,
+            borderTop: "1px solid var(--hair)",
+            flexShrink: 0,
+          }}
+        >
+          <button
+            className="lk-btn lk-btn--accent lk-btn--lg"
+            disabled={!valid || busy}
+            onClick={handleSubmit}
+            style={{ width: "100%" }}
+          >
+            {busy ? "Posting…" : "Post job"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1325,26 +1683,57 @@ export default function Dashboard({
     minFee: 50,
   });
   const [view, setView]               = useState<"browse" | "my-jobs" | "picked" | "tasks">("browse");
+  // Set when a notification click-through wants Task list to open on a
+  // specific tab (e.g. "interest_received" → confirm tab).
+  const [taskInitialTab, setTaskInitialTab] = useState<TaskTab | undefined>(undefined);
   const [showSettings, setShowSettings] = useState(false);
   const [displayName, setDisplayName]   = useState(userName);
   const [pickedFilter, setPickedFilter] = useState<StatusFilter>("today");
   const [allJobs, setAllJobs]           = useState<Job[]>([]);
   const [pickedJobs, setPickedJobs]     = useState<PickedJob[]>([]);
+  // undefined = not loaded yet, null = loaded but nothing saved — kept
+  // distinct so the critical notice never flashes on screen before we
+  // actually know either way.
+  const [bankDetails, setBankDetails] = useState<
+    { bankName: string; accountNumber: string; accountHolderName: string } | null | undefined
+  >(undefined);
+  const [billingDueNow, setBillingDueNow] = useState(0);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"profile" | "history" | "billing">("profile");
+  const [settingsFocusPayment, setSettingsFocusPayment] = useState(false);
 
-  // Fetch browse + picked jobs once on mount
-  useEffect(() => {
-    fetch("/api/jobs", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+  const refreshBrowseJobs = useCallback(() => {
+    return fetch("/api/jobs", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
       .then((r) => r.json())
       .then((d) => setAllJobs(d.jobs ?? []))
       .catch(() => {});
+  }, [token]);
+
+  // Fetch browse + picked jobs once on mount
+  useEffect(() => {
+    refreshBrowseJobs();
 
     if (token) {
       fetch("/api/jobs/picked", { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.json())
         .then((d) => setPickedJobs(d.jobs ?? []))
         .catch(() => {});
+
+      fetch("/api/users/me", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((d) => setBankDetails(d.bankDetails ?? null))
+        .catch(() => {});
+
+      fetch("/api/billing/transactions", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((d) => {
+          const dueNow = (d.transactions ?? [])
+            .filter((t: { isDueNow: boolean; status: string }) => t.status === "unpaid" && t.isDueNow)
+            .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+          setBillingDueNow(dueNow);
+        })
+        .catch(() => {});
     }
-  }, [token]);
+  }, [token, refreshBrowseJobs]);
 
   const showTodayMap = view === "picked" && pickedFilter === "today";
   const todayISO     = getTodayISO();
@@ -1359,6 +1748,7 @@ export default function Dashboard({
   const [panelOpen, setPanelOpen] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [showReminder, setShowReminder] = useState(false);
+  const [showPostSheet, setShowPostSheet] = useState(false);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -1398,7 +1788,12 @@ export default function Dashboard({
       // Notification best-effort — toast already shown optimistically
     }
   };
-  const onPost = () => setToast("Opens the post-a-job sheet.");
+  const onPost = () => setShowPostSheet(true);
+
+  function handleNotificationNavigate(target: NotificationTarget) {
+    setView(target.view);
+    if (target.taskTab) setTaskInitialTab(target.taskTab);
+  }
 
   return (
     <div
@@ -1412,9 +1807,27 @@ export default function Dashboard({
       {!showSettings && (
         <TopNav
           isMobile={isMobile}
-          onSignOut={onSignOut}
           onSettings={() => setShowSettings(true)}
-          userName={displayName}
+          onTasks={() => setView("tasks")}
+          tasksActive={view === "tasks"}
+          token={token}
+          onNotificationNavigate={handleNotificationNavigate}
+        />
+      )}
+
+      {bankDetails === null && (
+        <CriticalNotice
+          message="Add your bank details so you can get paid for jobs you pick up."
+          actionLabel="Add bank details"
+          onAction={() => { setSettingsInitialTab("profile"); setSettingsFocusPayment(true); setShowSettings(true); }}
+        />
+      )}
+
+      {billingDueNow > 0 && (
+        <CriticalNotice
+          message={`You have RM ${billingDueNow.toFixed(2)} in platform fees due now.`}
+          actionLabel="Pay now"
+          onAction={() => { setSettingsInitialTab("billing"); setShowSettings(true); }}
         />
       )}
 
@@ -1443,62 +1856,69 @@ export default function Dashboard({
             <>
               {showSettings ? (
                 <Settings
+                  token={token}
                   userName={displayName}
                   userPhone={userPhone}
                   onSignOut={onSignOut}
-                  onClose={() => setShowSettings(false)}
+                  onClose={() => { setShowSettings(false); setSettingsFocusPayment(false); }}
                   onNameChange={(n) => {
                     setDisplayName(n);
                     localStorage.setItem("lk_name", n);
                   }}
+                  bankDetails={bankDetails ?? null}
+                  onBankDetailsSaved={(d) => setBankDetails(d)}
+                  initialTab={settingsInitialTab}
+                  focusPayment={settingsFocusPayment}
                 />
               ) : (
                 <>
-                  {/* Tab bar */}
-                  <div
-                    style={{
-                      display: "flex",
-                      background: "#FFFFFF",
-                      borderBottom: "1px solid var(--hair)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {(
-                      [
-                        { id: "browse",  label: "Browse"  },
-                        { id: "my-jobs", label: "Posted"  },
-                        { id: "picked",  label: "Picked"  },
-                        { id: "tasks",   label: "Tasks"   },
-                      ] as { id: typeof view; label: string }[]
-                    ).map(({ id, label }) => (
-                      <button
-                        key={id}
-                        onClick={() => setView(id)}
-                        style={{
-                          flex: 1,
-                          height: 44,
-                          background: "transparent",
-                          border: "none",
-                          borderBottom: `2px solid ${view === id ? "var(--black)" : "transparent"}`,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          fontSize: 12,
-                          fontWeight: view === id ? 700 : 500,
-                          color: view === id ? "var(--black)" : "var(--warm-grey)",
-                          letterSpacing: "-0.01em",
-                          transition: "color 140ms, border-color 140ms",
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Tab bar — hidden in Tasks, which has its own back arrow instead */}
+                  {view !== "tasks" && (
+                    <div
+                      style={{
+                        display: "flex",
+                        background: "#FFFFFF",
+                        borderBottom: "1px solid var(--hair)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {(
+                        [
+                          { id: "browse",  label: "Browse"  },
+                          { id: "my-jobs", label: "Posted"  },
+                          { id: "picked",  label: "Picked"  },
+                        ] as { id: typeof view; label: string }[]
+                      ).map(({ id, label }) => (
+                        <button
+                          key={id}
+                          onClick={() => setView(id)}
+                          style={{
+                            flex: 1,
+                            height: 44,
+                            background: "transparent",
+                            border: "none",
+                            borderBottom: `2px solid ${view === id ? "var(--black)" : "transparent"}`,
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            fontSize: 12,
+                            fontWeight: view === id ? 700 : 500,
+                            color: view === id ? "var(--black)" : "var(--warm-grey)",
+                            letterSpacing: "-0.01em",
+                            transition: "color 140ms, border-color 140ms",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {view === "tasks" ? (
                     <TaskTracker
                       token={token}
                       pickedJobs={pickedJobs}
                       onNavigate={(v) => setView(v)}
+                      initialTab={taskInitialTab}
                     />
                   ) : view === "my-jobs" ? (
                     <MyJobs
@@ -1604,6 +2024,21 @@ export default function Dashboard({
       </main>
 
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
+
+      <CoachmarkTour active={view === "browse" && !showSettings && !showPostSheet} />
+
+      {showPostSheet && (
+        <PostJobSheet
+          token={token}
+          isMobile={isMobile}
+          onClose={() => setShowPostSheet(false)}
+          onPosted={() => {
+            setShowPostSheet(false);
+            setToast("Job posted. Eligible pickers nearby have been notified.");
+            refreshBrowseJobs();
+          }}
+        />
+      )}
 
       {showReminder && (
         <ReminderPopup

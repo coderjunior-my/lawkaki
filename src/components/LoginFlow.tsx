@@ -83,14 +83,6 @@ function LogoMark({ size = 48 }: { size?: number }) {
         d="M40 4 C60.4 4 76 19.6 76 40 C76 53.6 67.5 66 56 76 L40 96 L24 76 C12.5 66 4 53.6 4 40 C4 19.6 19.6 4 40 4 Z"
         fill="#0F1F33"
       />
-      <g fill="#FAF7F2" transform="translate(40 42) scale(0.34) translate(-30 -50)">
-        <ellipse cx="30" cy="64" rx="18" ry="28" />
-        <ellipse cx="14" cy="32" rx="4.4" ry="5.4" />
-        <ellipse cx="23" cy="22" rx="4" ry="4.8" />
-        <ellipse cx="32" cy="18" rx="3.6" ry="4.4" />
-        <ellipse cx="41" cy="22" rx="3.2" ry="4" />
-        <ellipse cx="48" cy="30" rx="2.8" ry="3.4" />
-      </g>
     </svg>
   );
 }
@@ -189,6 +181,10 @@ function isValidMYPhone(phone: string): boolean {
   return /^\+601\d{7,9}$/.test(phone);
 }
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 const labelSt: CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
@@ -201,7 +197,7 @@ const labelSt: CSSProperties = {
 /* ============================================================
    SCREEN 1 — Phone number entry
    ============================================================ */
-function PhoneStep({ onNext }: { onNext: (phone: string) => void }) {
+function PhoneStep({ onNext, onBack }: { onNext: (phone: string) => void; onBack?: () => void }) {
   const [value, setValue]  = useState("");
   const [error, setError]  = useState("");
   const [loading, setLoad] = useState(false);
@@ -240,6 +236,20 @@ function PhoneStep({ onNext }: { onNext: (phone: string) => void }) {
   return (
     <AuthShell>
       <StepDots current={0} total={3} />
+
+      {onBack && (
+        <button
+          onClick={onBack}
+          style={{
+            alignSelf: "flex-start", background: "transparent", border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6, padding: "0 0 16px",
+            color: "var(--warm-grey)", fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+          }}
+        >
+          <Icon d={I.arrowL} size={16} /> Back
+        </button>
+      )}
+
       <LogoMark size={52} />
 
       <h1
@@ -625,7 +635,8 @@ function ProfileStep({
     : LAW_FIRMS
   ).slice(0, 12);
 
-  const valid = name.trim() && firm && email.includes("@") && role;
+  const emailError = email.length > 0 && !isValidEmail(email);
+  const valid = name.trim() && firm && isValidEmail(email) && role;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -636,7 +647,7 @@ function ProfileStep({
       const res  = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionToken, name: name.trim(), firmId: firm!.id, role }),
+        body: JSON.stringify({ sessionToken, name: name.trim(), firmId: firm!.id, email: email.trim(), role }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
@@ -826,9 +837,14 @@ function ProfileStep({
               value={email}
               onChange={(e) => { setEmail(e.target.value); setError(""); }}
               type="email"
-              style={{ paddingLeft: 44, borderRadius: 14 }}
+              style={{ paddingLeft: 44, borderRadius: 14, borderColor: emailError ? "var(--red)" : undefined }}
             />
           </div>
+          {emailError && (
+            <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0, lineHeight: 1.4 }}>
+              Enter a valid email address.
+            </p>
+          )}
           <div
             style={{
               display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px",
@@ -1054,8 +1070,10 @@ type Step =
    ============================================================ */
 export default function LoginFlow({
   onSuccess,
+  onExit,
 }: {
   onSuccess: (token: string, userId: string, userName: string, phone: string) => void;
+  onExit?: () => void;
 }) {
   const [step, setStep] = useState<Step>({ name: "phone" });
 
@@ -1064,6 +1082,7 @@ export default function LoginFlow({
       {step.name === "phone" && (
         <PhoneStep
           onNext={(phone) => setStep({ name: "otp", phone })}
+          onBack={onExit}
         />
       )}
 

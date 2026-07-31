@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useRef, CSSProperties } from "react";
+import { useState, useRef, useEffect, useCallback, CSSProperties } from "react";
+import { PLATFORM_BANK_DETAILS as PLATFORM_BANK } from "@/lib/billing";
+import { MALAYSIAN_BANKS } from "@/lib/banks";
 
 /* ============================================================
    Icons (Lucide-style, outlined, 2px stroke)
@@ -37,16 +39,15 @@ const IC = {
   exit:      "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9",
   lock:      "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2z M7 11V7a5 5 0 0 1 10 0v4",
   cal:       "M16 2v4M8 2v4M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+  download:  "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
+  alert:     "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01",
 };
 
 /* ============================================================
    Types
    ============================================================ */
-type SettingsTab  = "profile" | "history" | "upcoming" | "reviews";
-type ReviewSubTab = "pending" | "given" | "received";
+type SettingsTab  = "profile" | "history" | "billing";
 type HistFilter   = "all" | "paid" | "pending" | "overdue";
-type JobStatus    = "scheduled" | "signing-done" | "docs-collected" | "poster-confirmed";
-type DocsStatus   = "dispatched" | "pending" | "not-required";
 type UserRole     = "post" | "pick" | "both";
 type JobRole      = "picker" | "poster";
 type PayStatus    = "paid" | "pending" | "overdue";
@@ -64,26 +65,6 @@ interface HistJob {
   id: string; date: string; venue: string; docType: string; area: string;
   fee: number; role: JobRole; payment: PayStatus; paidDate: string | null;
 }
-interface UpcomingJob {
-  id: string; date: string; venue: string; docType: string; area: string; fee: number;
-  role: JobRole; poster?: { name: string; initials: string }; picker?: { name: string; initials: string };
-  docsStatus: DocsStatus; docsNote: string; jobStatus: JobStatus;
-  signingDoneAt?: string; docsCollectedAt?: string;
-}
-interface PendingReview {
-  id: string; jobId: string; venue: string; docType: string; date: string; fee: number;
-  counterparty: { name: string; initials: string }; role: JobRole; reviewLabel: string;
-}
-interface GivenReview {
-  id: string; venue: string; docType: string; date: string; fee?: number;
-  counterparty?: { name: string; initials: string };
-  picker?: { name: string; initials: string }; poster?: { name: string; initials: string };
-  rating: number; comment: string; role: JobRole;
-}
-interface ReceivedReview {
-  id: string; from: string; initials: string; rating: number; comment: string; date: string;
-}
-
 /* ============================================================
    Constants
    ============================================================ */
@@ -97,24 +78,15 @@ const LAW_FIRMS = [
 const AREAS = ["KLCC", "Mont Kiara", "Bangsar", "Petaling Jaya", "Cheras", "Damansara Heights", "Subang Jaya", "Shah Alam", "Cyberjaya", "Putrajaya"];
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAY_LABELS: Record<string, string> = { mon:"Mon", tue:"Tue", wed:"Wed", thu:"Thu", fri:"Fri", sat:"Sat", sun:"Sun" };
-const STAR_LABELS = ["", "Needs improvement", "Below expectations", "Satisfactory", "Good kaki", "Excellent kaki"];
-const JOB_STEPS: { key: JobStatus; label: string }[] = [
-  { key: "scheduled",        label: "Scheduled" },
-  { key: "signing-done",     label: "Signing completed" },
-  { key: "docs-collected",   label: "Runner collected docs" },
-  { key: "poster-confirmed", label: "Poster confirmed" },
-];
 const TABS: { id: SettingsTab; label: string; icon: string | string[] }[] = [
   { id: "profile",  label: "Profile",     icon: IC.user },
   { id: "history",  label: "Job history", icon: IC.briefcase },
-  { id: "upcoming", label: "Upcoming",    icon: IC.cal },
-  { id: "reviews",  label: "Reviews",     icon: IC.star },
+  { id: "billing",  label: "Billing",     icon: IC.credit },
 ];
 const TAB_SUBS: Record<SettingsTab, string> = {
   profile:  "Manage your account details, availability, and preferences.",
   history:  "All your completed jobs and payment status.",
-  upcoming: "Scheduled appointments, job progress, and document tracking.",
-  reviews:  "Rate your kakis and see what they think of you.",
+  billing:  "Pay your platform fee and manage payment history.",
 };
 
 /* ============================================================
@@ -138,36 +110,13 @@ const INIT_HISTORY: HistJob[] = [
   { id:"h5", date:"28 May",  venue:"LHDN Cheras",           docType:"Stamping",               area:"Cheras",            fee:95,  role:"picker", payment:"paid",    paidDate:"30 May 2026" },
   { id:"h6", date:"20 May",  venue:"Maybank · Mont Kiara", docType:"SPA Signing",            area:"Mont Kiara",        fee:150, role:"picker", payment:"overdue",  paidDate:null },
 ];
-const INIT_UPCOMING: UpcomingJob[] = [
-  { id:"u1", date:"Tomorrow · 10:30 AM", venue:"CIMB · Bangsar South",   docType:"Discharge of Charge",    area:"Bangsar",          fee:140, role:"picker", poster:{ name:"Adeline Lim", initials:"AL" }, docsStatus:"dispatched", docsNote:"Courier dispatched 18 Jun, tracking: POS1234",          jobStatus:"scheduled" },
-  { id:"u2", date:"Fri 21 Jun · 3:00 PM",venue:"Maybank · Mont Kiara",   docType:"SPA Signing",            area:"Mont Kiara",       fee:150, role:"picker", poster:{ name:"Adrian Tan",  initials:"AT" }, docsStatus:"pending",   docsNote:"Waiting for poster to dispatch documents",               jobStatus:"scheduled" },
-  { id:"u3", date:"Mon 24 Jun · 9:30 AM",venue:"Pejabat Tanah PJ",       docType:"Transfer at Land Office",area:"Petaling Jaya",    fee:280, role:"poster", picker:{ name:"Wei Ling",    initials:"WL" }, docsStatus:"not-required", docsNote:"You are the poster for this job",                     jobStatus:"scheduled" },
-  { id:"u4", date:"Today · 9:00 AM",      venue:"Wisma Damansara",       docType:"Discharge of Charge",    area:"Damansara Heights",fee:180, role:"picker", poster:{ name:"Haziq R.",    initials:"HR" }, docsStatus:"dispatched", docsNote:"Documents received",                                    jobStatus:"signing-done",    signingDoneAt:"9:42 AM" },
-  { id:"u5", date:"Today · 2:00 PM",      venue:"Public Bank · KLCC",   docType:"Loan Documentation",     area:"KLCC",              fee:220, role:"poster", picker:{ name:"Marcus Tan",  initials:"MT" }, docsStatus:"dispatched", docsNote:"Runner collected docs",                                  jobStatus:"docs-collected",  signingDoneAt:"2:35 PM", docsCollectedAt:"3:10 PM" },
-];
-const INIT_PENDING: PendingReview[] = [
-  { id:"r1", jobId:"h1", venue:"Wisma Damansara",    docType:"Discharge of Charge", date:"19 Jun 2026", fee:180, counterparty:{ name:"Wei Ling",    initials:"WL" }, role:"poster", reviewLabel:"Rate your picker" },
-  { id:"r2", jobId:"h3", venue:"Public Bank · KLCC", docType:"Loan Documentation",  date:"10 Jun 2026", fee:220, counterparty:{ name:"Marcus Tan",  initials:"MT" }, role:"poster", reviewLabel:"Rate your picker" },
-  { id:"r3", jobId:"h5", venue:"LHDN Cheras",         docType:"Stamping",           date:"28 May 2026", fee:95,  counterparty:{ name:"Haziq R.",    initials:"HR" }, role:"picker", reviewLabel:"Rate the poster" },
-  { id:"r4", jobId:"h2", venue:"Bangsar Village II",  docType:"SPA Signing",        date:"15 Jun 2026", fee:120, counterparty:{ name:"Adeline Lim", initials:"AL" }, role:"picker", reviewLabel:"Rate the poster" },
-];
-const INIT_GIVEN: GivenReview[] = [
-  { id:"rg1", venue:"Pejabat Tanah PJ",    docType:"Transfer at Land Office", date:"5 Jun 2026",  picker:{ name:"Priya S.",    initials:"PS" }, rating:5, comment:"Arrived early, very thorough. Would use again.",              role:"poster" },
-  { id:"rg2", venue:"LHDN Cheras",          docType:"Stamping",               date:"28 May 2026", poster:{ name:"Adeline Lim", initials:"AL" }, rating:5, comment:"Clear brief, documents were ready. Smooth job.",              role:"picker" },
-  { id:"rg3", venue:"Maybank · Mont Kiara",docType:"SPA Signing",             date:"15 May 2026", picker:{ name:"Adrian Tan",  initials:"AT" }, rating:4, comment:"Got the job done, slight delay but communicated well.",       role:"poster" },
-];
-const INIT_RECEIVED: ReceivedReview[] = [
-  { id:"rr1", from:"Adeline Lim", initials:"AL", rating:5, comment:"Reliable kaki. On time, professional.",      date:"12 Jun 2026" },
-  { id:"rr2", from:"Haziq R.",    initials:"HR", rating:5, comment:"Great communicator. Docs returned same day.", date:"30 May 2026" },
-  { id:"rr3", from:"Wei Ling",    initials:"WL", rating:4, comment:"Good work overall.",                          date:"22 May 2026" },
-];
 
 /* ============================================================
    Shared primitives
    ============================================================ */
-function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({ id, title, action, children }: { id?: string; title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div>
+    <div id={id}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
         <h3 style={{ fontSize:17, fontWeight:700, letterSpacing:"-0.01em", margin:0 }}>{title}</h3>
         {action}
@@ -267,42 +216,104 @@ function PaymentBadge({ status }: { status: PayStatus }) {
   );
 }
 
-function Toast({ message, onDone }: { message: string; onDone: () => void }) {
-  return (
-    <div onClick={onDone} style={{
-      position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", zIndex:100,
-      background:"var(--black)", color:"var(--off-white)", padding:"12px 18px",
-      borderRadius:999, fontSize:13, fontWeight:500, cursor:"pointer",
-      boxShadow:"0 12px 32px -8px rgba(15,31,51,0.4)", maxWidth:520,
-      display:"flex", alignItems:"center", gap:10,
-    }}>
-      {message}
-    </div>
-  );
-}
-
-function WhatsAppDot() {
-  return <span style={{ width:8, height:8, borderRadius:999, background:"#25D366", flexShrink:0, display:"inline-block" }}/>;
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 /* ============================================================
-   Docs status helpers
+   Responsive helper
    ============================================================ */
-function docsLabel(s: DocsStatus)  { return { dispatched:"Documents dispatched", pending:"Documents pending", "not-required":"No documents needed" }[s]; }
-function docsIcon(s: DocsStatus)   { return { dispatched:IC.check, pending:IC.cal, "not-required":IC.file }[s]; }
-function docsColor(s: DocsStatus)  { return { dispatched:"var(--green)", pending:"var(--amber)", "not-required":"var(--warm-grey)" }[s]; }
-function docsBg(s: DocsStatus)     { return { dispatched:"var(--green-soft)", pending:"var(--amber-soft)", "not-required":"var(--pale-grey)" }[s]; }
-function docsBorder(s: DocsStatus) { return { dispatched:"var(--green)", pending:"var(--amber)", "not-required":"var(--hair)" }[s]; }
+function useIsMobile(bp = 768) {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const update = () => setMobile(window.innerWidth < bp);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [bp]);
+  return mobile;
+}
 
 /* ============================================================
    Profile tab
    ============================================================ */
-function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: User) => void; onSignOut?: () => void }) {
+interface BankDetails { bankName: string; accountNumber: string; accountHolderName: string }
+const ACCOUNT_NUMBER_RE = /^\d{6,20}$/;
+
+function ProfileTab({
+  user, setUser, onSignOut, token, bankDetails, onBankDetailsSaved, focusPayment, isMobile = false,
+}: {
+  user: User; setUser: (u: User) => void; onSignOut?: () => void;
+  token?: string; bankDetails?: BankDetails | null; onBankDetailsSaved?: (d: BankDetails) => void;
+  focusPayment?: boolean; isMobile?: boolean;
+}) {
   const [editing, setEditing]     = useState(false);
   const [draft, setDraft]         = useState<User>({ ...user });
   const [firmOpen, setFirmOpen]   = useState(false);
   const [saved, setSaved]         = useState(false);
   const fileRef                   = useRef<HTMLInputElement>(null);
+
+  const [bankFormOpen, setBankFormOpen]         = useState(false);
+  const [bankName, setBankName]                 = useState("");
+  const [accountNumber, setAccountNumber]       = useState("");
+  const [accountHolderName, setAccountHolderName] = useState("");
+  const [bankSaving, setBankSaving]             = useState(false);
+  const [bankError, setBankError]               = useState<string | null>(null);
+
+  function openBankForm() {
+    setBankName(bankDetails?.bankName ?? "");
+    setAccountNumber(bankDetails?.accountNumber ?? "");
+    // Defaults to the logged-in user's own name, but it's editable — any
+    // account holder (e.g. a spouse's or firm's) is allowed.
+    setAccountHolderName(bankDetails?.accountHolderName ?? user.name);
+    setBankError(null);
+    setBankFormOpen(true);
+  }
+
+  // Jump straight to Payment details (form open, scrolled into view) when
+  // arriving via the "Add bank details" critical notice, so the poster
+  // doesn't have to hunt for it further down the page.
+  useEffect(() => {
+    if (!focusPayment) return;
+    openBankForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPayment]);
+
+  useEffect(() => {
+    if (!focusPayment || !bankFormOpen) return;
+    // Wait for the now-expanded form to actually paint (it's much taller
+    // than the collapsed view) before measuring where to scroll to —
+    // scrolling against the pre-expansion layout lands short/long.
+    const raf = requestAnimationFrame(() => {
+      document.getElementById("lk-settings-payment-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [focusPayment, bankFormOpen]);
+
+  async function saveBankDetails() {
+    if (!token) return;
+    if (!accountHolderName.trim()) { setBankError("Enter the account holder's name."); return; }
+    if (!bankName) { setBankError("Select your bank."); return; }
+    if (!ACCOUNT_NUMBER_RE.test(accountNumber)) {
+      setBankError("Enter a valid account number (digits only, 6–20 characters).");
+      return;
+    }
+    setBankSaving(true);
+    setBankError(null);
+    try {
+      const res = await fetch("/api/users/bank-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ bankName, accountNumber, accountHolderName: accountHolderName.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setBankError(data.error ?? "Failed to save."); return; }
+      onBankDetailsSaved?.({ bankName, accountNumber, accountHolderName: accountHolderName.trim() });
+      setBankFormOpen(false);
+    } finally {
+      setBankSaving(false);
+    }
+  }
 
   const roleLabels: Record<UserRole, string> = { post:"Post jobs", pick:"Pick jobs", both:"Both" };
   const roles = [
@@ -311,18 +322,22 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
     { id:"both" as UserRole, label:"Both",       desc:"Post and pick as needed" },
   ];
 
-  const save = () => { setUser(draft); setEditing(false); setSaved(true); setTimeout(() => setSaved(false), 2400); };
+  const emailError = draft.email.length > 0 && !isValidEmail(draft.email);
+  const save = () => {
+    if (!isValidEmail(draft.email)) return;
+    setUser(draft); setEditing(false); setSaved(true); setTimeout(() => setSaved(false), 2400);
+  };
   const cancel = () => { setDraft({ ...user }); setEditing(false); };
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
       {/* Profile header card */}
-      <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, padding:"24px 28px", display:"flex", alignItems:"center", gap:20 }}>
-        <div style={{ width:72, height:72, borderRadius:999, background:"var(--black)", color:"var(--off-white)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontWeight:700, flexShrink:0 }}>
+      <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, padding: isMobile ? "18px 18px" : "24px 28px", display:"flex", alignItems:"center", gap: isMobile ? 14 : 20, flexWrap:"wrap" }}>
+        <div style={{ width: isMobile ? 56 : 72, height: isMobile ? 56 : 72, borderRadius:999, background:"var(--black)", color:"var(--off-white)", display:"flex", alignItems:"center", justifyContent:"center", fontSize: isMobile ? 18 : 24, fontWeight:700, flexShrink:0 }}>
           {user.initials}
         </div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:22, fontWeight:700, letterSpacing:"-0.02em", lineHeight:1.2 }}>{user.name}</div>
+        <div style={{ flex:1, minWidth: isMobile ? 180 : undefined }}>
+          <div style={{ fontSize: isMobile ? 18 : 22, fontWeight:700, letterSpacing:"-0.02em", lineHeight:1.2 }}>{user.name}</div>
           <div style={{ fontSize:14, color:"var(--warm-grey)", marginTop:4 }}>{user.firm}</div>
           <div style={{ display:"flex", gap:12, marginTop:10, flexWrap:"wrap" }}>
             <span className="lk-chip lk-chip--sm lk-chip--solid">{roleLabels[user.role]}</span>
@@ -330,7 +345,7 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
             <span className="lk-chip lk-chip--sm"><Ic d={IC.briefcase} size={12}/>{user.totalJobs} jobs</span>
           </div>
         </div>
-        <div style={{ textAlign:"right", flexShrink:0 }}>
+        <div style={{ textAlign: isMobile ? "left" : "right", flexShrink:0 }}>
           <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase" }}>Member since</div>
           <div style={{ fontSize:15, fontWeight:700, marginTop:4 }}>{user.joinedDate}</div>
           <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:2 }}>{user.joinedDays} days</div>
@@ -379,7 +394,7 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
         <Section title="Edit profile" action={
           <div style={{ display:"flex", gap:8 }}>
             <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={cancel}>Cancel</button>
-            <button className="lk-btn lk-btn--sm" onClick={save}><Ic d={IC.check} size={14}/> Save</button>
+            <button className="lk-btn lk-btn--sm" disabled={emailError} onClick={save}><Ic d={IC.check} size={14}/> Save</button>
           </div>
         }>
           <EditField label="Full name">
@@ -390,8 +405,14 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
             <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:4 }}>To change your number, go to Security below.</div>
           </EditField>
           <EditField label="Law firm email">
-            <input className="lk-input" value={draft.email} onChange={e => setDraft({...draft, email:e.target.value})} style={{ borderRadius:12 }}/>
-            <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:4 }}>Used for verification only. We won&apos;t send anything here.</div>
+            <input
+              className="lk-input" type="email" value={draft.email}
+              onChange={e => setDraft({...draft, email:e.target.value})}
+              style={{ borderRadius:12, borderColor: emailError ? "var(--red)" : undefined }}
+            />
+            {emailError
+              ? <div style={{ fontSize:12, color:"var(--red)", marginTop:4 }}>Enter a valid email address.</div>
+              : <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:4 }}>Used for verification only. We won&apos;t send anything here.</div>}
           </EditField>
           <EditField label="Law firm">
             <div style={{ position:"relative" }}>
@@ -464,25 +485,69 @@ function ProfileTab({ user, setUser, onSignOut }: { user: User; setUser: (u: Use
       </Section>
 
       {/* Payment details */}
-      <Section title="Payment details">
-        <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"16px 18px", display:"flex", flexDirection:"column", gap:8 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:40, height:40, borderRadius:10, background:"var(--pale-grey)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <Ic d={IC.credit} size={18} style={{ color:"var(--black)" }}/>
+      <Section id="lk-settings-payment-details" title="Payment details">
+        {!bankFormOpen ? (
+          <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"16px 18px", display:"flex", flexDirection:"column", gap:8 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                <div style={{ width:40, height:40, borderRadius:10, background: bankDetails ? "var(--green-soft)" : "var(--pale-grey)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <Ic d={IC.credit} size={18} style={{ color: bankDetails ? "var(--green)" : "var(--black)" }}/>
+                </div>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:600 }}>{bankDetails ? bankDetails.bankName : "Not added yet"}</div>
+                  {bankDetails && (
+                    <div style={{ fontSize:13, color:"var(--warm-grey)", fontVariantNumeric:"tabular-nums" }}>
+                      {bankDetails.accountNumber} · {bankDetails.accountHolderName}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize:14, fontWeight:600 }}>{user.bankName}</div>
-                <div style={{ fontSize:13, color:"var(--warm-grey)", fontVariantNumeric:"tabular-nums" }}>{user.bankAccount}</div>
-              </div>
+              <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={openBankForm}>
+                <Ic d={IC.edit} size={14}/> {bankDetails ? "Update" : "Add now"}
+              </button>
             </div>
-            <button className="lk-btn lk-btn--ghost lk-btn--sm"><Ic d={IC.edit} size={14}/> Update</button>
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", background:"var(--pale-grey)", borderRadius:10 }}>
+              <Ic d={IC.shield} size={14} style={{ color:"var(--warm-grey)", flexShrink:0 }}/>
+              <span style={{ fontSize:12, color:"var(--warm-grey)", lineHeight:1.4 }}>Earnings are paid out via DuitNow within 3 business days of job completion.</span>
+            </div>
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", background:"var(--pale-grey)", borderRadius:10 }}>
-            <Ic d={IC.shield} size={14} style={{ color:"var(--warm-grey)", flexShrink:0 }}/>
-            <span style={{ fontSize:12, color:"var(--warm-grey)", lineHeight:1.4 }}>Earnings are paid out via DuitNow within 3 business days of job completion.</span>
+        ) : (
+          <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"18px 20px", display:"flex", flexDirection:"column", gap:14 }}>
+            <EditField label="Account holder name">
+              <input
+                className="lk-input" value={accountHolderName}
+                onChange={e => setAccountHolderName(e.target.value)}
+                placeholder="Name on the bank account"
+                style={{ borderRadius:12 }}
+              />
+            </EditField>
+            <EditField label="Bank">
+              <select
+                className="lk-input" value={bankName}
+                onChange={e => setBankName(e.target.value)}
+                style={{ borderRadius:12 }}
+              >
+                <option value="" disabled>Select your bank</option>
+                {MALAYSIAN_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </EditField>
+            <EditField label="Account number">
+              <input
+                className="lk-input" value={accountNumber} inputMode="numeric"
+                onChange={e => setAccountNumber(e.target.value.replace(/\D/g, ""))}
+                placeholder="1234567890"
+                style={{ borderRadius:12, fontVariantNumeric:"tabular-nums" }}
+              />
+            </EditField>
+            {bankError && <p style={{ color:"var(--red)", fontSize:12.5, margin:0 }}>{bankError}</p>}
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+              <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={() => setBankFormOpen(false)}>Cancel</button>
+              <button className="lk-btn lk-btn--sm" disabled={bankSaving} onClick={saveBankDetails}>
+                {bankSaving ? "Saving…" : <><Ic d={IC.check} size={14}/> Save</>}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </Section>
 
       {/* Notifications */}
@@ -559,351 +624,267 @@ function HistoryTab() {
 }
 
 /* ============================================================
-   Upcoming tab
+   Billing tab — Poster → platform. Fee is RM0.00 today; the flow
+   (select, pay, review, history, export) is the point, not the amount.
    ============================================================ */
-function UpcomingCard({ job: j, onAdvance }: { job: UpcomingJob; onAdvance: (id: string, next: JobStatus, msg: string) => void }) {
-  const si = JOB_STEPS.findIndex(s => s.key === j.jobStatus);
-  const isDone = j.jobStatus === "poster-confirmed";
-  const isPicker = j.role === "picker";
-  const isPoster = j.role === "poster";
+interface FeeTxn {
+  id: string; amount: number; status: "unpaid" | "paid";
+  dueAt: string; createdAt: string; paymentId: string | null; isDueNow: boolean;
+  job: { id: string; venue: string; docType: string; appointmentAt: string; area: string | null } | null;
+}
+interface BillingSummary { totalUnpaid: number; unpaidCount: number; thresholdExceeded: boolean; threshold: number }
+interface PastPayment {
+  id: string; method: string; totalAmount: number; reference: string | null;
+  status: "pending" | "confirmed" | "rejected"; submittedAt: string; reviewedAt: string | null;
+  transactions: { id: string; amount: number; venue: string | null; docType: string | null; appointmentAt: string | null }[];
+}
 
+function PaymentStatusBadge({ status }: { status: "pending" | "confirmed" | "rejected" }) {
+  const map = {
+    pending:   { label:"Pending review", bg:"var(--amber-soft)", fg:"#7A4A0F",    border:"var(--amber)" },
+    confirmed: { label:"Confirmed",      bg:"var(--green-soft)", fg:"var(--green)", border:"var(--green)" },
+    rejected:  { label:"Rejected",       bg:"var(--red-soft)",   fg:"var(--red)",   border:"var(--red)" },
+  } as const;
+  const s = map[status];
   return (
-    <div style={{ background:"#FFF", border:`1px solid ${isDone ? "var(--green)" : "var(--hair)"}`, borderRadius:14, padding:"18px 20px", display:"flex", flexDirection:"column", gap:14, opacity: isDone ? 0.7 : 1, transition:"opacity 220ms" }}>
-      {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <Ic size={14} style={{ color:"var(--warm-grey)" }}>
-            <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
-          </Ic>
-          <span style={{ fontSize:14, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>{j.date}</span>
-          <span className={`lk-chip lk-chip--sm${isPicker ? " lk-chip--solid" : ""}`} style={{ fontSize:10 }}>
-            {isPicker ? "Picking" : "Posted"}
-          </span>
-        </div>
-        <div style={{ fontSize:18, fontWeight:700, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.01em" }}>RM {j.fee}</div>
-      </div>
-
-      {/* Venue + counterparty */}
-      <div>
-        <div style={{ fontSize:16, fontWeight:700, letterSpacing:"-0.01em", lineHeight:1.3 }}>{j.venue}</div>
-        <div style={{ fontSize:13, color:"var(--warm-grey)", marginTop:2 }}>{j.docType} · {j.area}</div>
-        {isPicker && j.poster && (
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:12, color:"var(--warm-grey)" }}>
-            <div className="lk-avatar" style={{ width:22, height:22, fontSize:9, background:"var(--black)", color:"var(--off-white)" }}>{j.poster.initials}</div>
-            Posted by {j.poster.name}
-          </div>
-        )}
-        {isPoster && j.picker && (
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:12, color:"var(--warm-grey)" }}>
-            <div className="lk-avatar" style={{ width:22, height:22, fontSize:9 }}>{j.picker.initials}</div>
-            Picked by {j.picker.name}
-          </div>
-        )}
-      </div>
-
-      {/* Doc dispatch bar */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:docsBg(j.docsStatus), border:`1px solid ${docsBorder(j.docsStatus)}`, borderRadius:10 }}>
-        <div style={{ width:28, height:28, borderRadius:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#FFF" }}>
-          <Ic d={docsIcon(j.docsStatus)} size={14} style={{ color:docsColor(j.docsStatus) }}/>
-        </div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:12, fontWeight:600, color:docsColor(j.docsStatus) }}>{docsLabel(j.docsStatus)}</div>
-          <div style={{ fontSize:11, color:"var(--warm-grey)", marginTop:1 }}>{j.docsNote}</div>
-        </div>
-        {isPicker && j.docsStatus==="pending" && (
-          <button className="lk-btn lk-btn--ghost lk-btn--sm" style={{ height:28, fontSize:11 }}>Remind poster</button>
-        )}
-      </div>
-
-      {/* Job progress stepper */}
-      <div style={{ padding:"4px 0" }}>
-        <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase", color:"var(--warm-grey)", marginBottom:12 }}>Job progress</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
-          {JOB_STEPS.map((step, idx) => {
-            const reached  = idx <= si;
-            const isCurrent = idx === si;
-            const showLine  = idx < JOB_STEPS.length - 1;
-            return (
-              <div key={step.key} style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
-                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:24, flexShrink:0 }}>
-                  <div style={{ width:24, height:24, borderRadius:999, background: reached ? (isCurrent && si < 3 ? "var(--amber)" : "var(--green)") : "var(--pale-grey)", display:"flex", alignItems:"center", justifyContent:"center", border: !reached ? "2px dashed var(--hair)" : "none", transition:"all 220ms" }}>
-                    {reached
-                      ? <Ic d={IC.check} size={12} sw={2.5} style={{ color:"#FFF" }}/>
-                      : <span style={{ width:6, height:6, borderRadius:999, background:"var(--warm-grey)", opacity:0.4 }}/>}
-                  </div>
-                  {showLine && <div style={{ width:2, height:28, background: reached && idx<si ? "var(--green)" : "var(--hair)", transition:"background 220ms" }}/>}
-                </div>
-                <div style={{ paddingBottom: showLine ? 8 : 0, flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight: reached ? 700 : 500, color: reached ? "var(--black)" : "var(--warm-grey)", lineHeight:1.5 }}>
-                    {step.label}
-                    {step.key==="signing-done" && j.signingDoneAt && (
-                      <span style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:500, marginLeft:8, fontVariantNumeric:"tabular-nums" }}>at {j.signingDoneAt}</span>
-                    )}
-                    {step.key==="docs-collected" && j.docsCollectedAt && (
-                      <span style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:500, marginLeft:8, fontVariantNumeric:"tabular-nums" }}>at {j.docsCollectedAt}</span>
-                    )}
-                  </div>
-                  {reached && step.key==="signing-done" && (
-                    <div style={{ fontSize:11, color:"var(--warm-grey)", display:"flex", alignItems:"center", gap:5, marginTop:2 }}>
-                      <WhatsAppDot/> Poster notified via WhatsApp
-                    </div>
-                  )}
-                  {reached && step.key==="docs-collected" && (
-                    <div style={{ fontSize:11, color:"var(--warm-grey)", display:"flex", alignItems:"center", gap:5, marginTop:2 }}>
-                      <WhatsAppDot/> Poster notified — awaiting confirmation
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Action buttons */}
-      <div style={{ display:"flex", gap:8, justifyContent:"flex-end", paddingTop:4, borderTop:"1px solid var(--pale-grey)" }}>
-        {isPicker && j.jobStatus==="scheduled" && (
-          <button className="lk-btn lk-btn--accent lk-btn--sm" onClick={() => onAdvance(j.id, "signing-done", `Signing marked as done. ${j.poster?.name || "Poster"} notified via WhatsApp.`)}>
-            <Ic d={IC.check} size={14}/> Mark signing done
-          </button>
-        )}
-        {isPicker && j.jobStatus==="signing-done" && (
-          <button className="lk-btn lk-btn--accent lk-btn--sm" onClick={() => onAdvance(j.id, "docs-collected", `Runner collection confirmed. ${j.poster?.name || "Poster"} notified via WhatsApp to confirm receipt.`)}>
-            <Ic d={IC.package} size={14}/> Runner collected docs
-          </button>
-        )}
-        {isPicker && j.jobStatus==="docs-collected" && (
-          <span style={{ fontSize:12, color:"var(--warm-grey)", fontWeight:500, padding:"8px 0", display:"flex", alignItems:"center", gap:6 }}>
-            <Ic size={14}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></Ic>
-            Waiting for poster to confirm receipt
-          </span>
-        )}
-        {isPoster && j.jobStatus==="docs-collected" && (
-          <button className="lk-btn lk-btn--accent lk-btn--sm" onClick={() => onAdvance(j.id, "poster-confirmed", `Job confirmed as complete. ${j.picker?.name || "Picker"} will be paid.`)}>
-            <Ic d={IC.check} size={14}/> Confirm docs received
-          </button>
-        )}
-        {isPoster && j.jobStatus!=="docs-collected" && j.jobStatus!=="poster-confirmed" && (
-          <span style={{ fontSize:12, color:"var(--warm-grey)", fontWeight:500, padding:"8px 0", display:"flex", alignItems:"center", gap:6 }}>
-            {j.jobStatus==="signing-done"
-              ? <><Ic d={IC.check} size={13} style={{ color:"var(--amber)" }}/> Signing done — waiting for doc collection</>
-              : <><Ic size={13}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></Ic> Job not started yet</>}
-          </span>
-        )}
-        {isDone && (
-          <span style={{ fontSize:12, fontWeight:700, color:"var(--green)", display:"flex", alignItems:"center", gap:6 }}>
-            <Ic d={IC.check} size={14}/> Job complete
-          </span>
-        )}
-        <button className="lk-btn lk-btn--ghost lk-btn--sm">View details <Ic d={IC.chevR} size={14}/></button>
-      </div>
-    </div>
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:999, fontSize:11, fontWeight:700, background:s.bg, color:s.fg, border:`1px solid ${s.border}` }}>
+      <span style={{ width:5, height:5, borderRadius:999, background:s.fg }}/>{s.label}
+    </span>
   );
 }
 
-function UpcomingTab() {
-  const [jobs, setJobs] = useState<UpcomingJob[]>(INIT_UPCOMING.map(j => ({...j})));
-  const [toast, setToast] = useState<string | null>(null);
-
-  const advance = (id: string, next: JobStatus, msg: string) => {
-    setJobs(prev => prev.map(j => {
-      if (j.id !== id) return j;
-      const updated: UpcomingJob = { ...j, jobStatus: next };
-      if (next==="signing-done")     updated.signingDoneAt    = new Date().toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit" });
-      if (next==="docs-collected")   updated.docsCollectedAt  = new Date().toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit" });
-      return updated;
-    }));
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const activeCount = jobs.filter(j => j.jobStatus !== "poster-confirmed").length;
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:16, position:"relative" }}>
-      <div style={{ fontSize:13, color:"var(--warm-grey)", fontWeight:500 }}>
-        {activeCount} active appointment{activeCount !== 1 ? "s" : ""}
-      </div>
-      {jobs.map(j => <UpcomingCard key={j.id} job={j} onAdvance={advance}/>)}
-      {toast && <Toast message={toast} onDone={() => setToast(null)}/>}
-    </div>
-  );
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-MY", { day:"numeric", month:"short", year:"numeric" });
 }
 
-/* ============================================================
-   Reviews tab
-   ============================================================ */
-function ReviewsTab() {
-  const [subTab, setSubTab]       = useState<ReviewSubTab>("pending");
-  const [pending, setPending]     = useState<PendingReview[]>(INIT_PENDING.map(r => ({...r})));
-  const [given, setGiven]         = useState<GivenReview[]>([...INIT_GIVEN]);
-  const [received]                = useState<ReceivedReview[]>([...INIT_RECEIVED]);
-  const [activeId, setActiveId]   = useState<string | null>(null);
-  const [rating, setRating]       = useState(0);
-  const [comment, setComment]     = useState("");
-  const [hoveredStar, setHoveredStar] = useState(0);
-  const [toast, setToast]         = useState<string | null>(null);
+function BillingTab({ token }: { token?: string }) {
+  const [transactions, setTransactions] = useState<FeeTxn[]>([]);
+  const [summary, setSummary]           = useState<BillingSummary | null>(null);
+  const [payments, setPayments]         = useState<PastPayment[]>([]);
+  const [selected, setSelected]         = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting]     = useState(false);
+  const [toast, setToast]               = useState<string | null>(null);
+  const [expanded, setExpanded]         = useState<string | null>(null);
+  const [loading, setLoading]           = useState(true);
 
-  function submitReview(r: PendingReview) {
-    const newGiven: GivenReview = {
-      id: "rg-" + Date.now(), venue: r.venue, docType: r.docType,
-      date: r.date, fee: r.fee, counterparty: r.counterparty,
-      rating, comment, role: r.role,
-    };
-    setGiven(prev => [newGiven, ...prev]);
-    setPending(prev => prev.filter(p => p.id !== r.id));
-    setActiveId(null); setRating(0); setComment("");
-    setToast(`Review submitted for ${r.counterparty.name}. Terima kasih, kaki.`);
-    setTimeout(() => setToast(null), 3000);
+  const refresh = useCallback(() => {
+    if (!token) { setLoading(false); return; }
+    Promise.all([
+      fetch("/api/billing/transactions", { headers:{ Authorization:`Bearer ${token}` } }).then(r => r.json()),
+      fetch("/api/billing/payments",     { headers:{ Authorization:`Bearer ${token}` } }).then(r => r.json()),
+    ]).then(([t, p]) => {
+      setTransactions(t.transactions ?? []);
+      setSummary(t.summary ?? null);
+      setPayments(p.payments ?? []);
+      // Drop any selected id that's no longer payable (paid, gone, or just
+      // submitted into a payment) rather than blindly clearing — a refresh
+      // shouldn't silently discard what the poster's already ticked.
+      const stillPayable = new Set<string>(
+        (t.transactions ?? []).filter((x: FeeTxn) => x.status === "unpaid" && !x.paymentId).map((x: FeeTxn) => x.id)
+      );
+      setSelected(prev => new Set(Array.from(prev).filter(id => stillPayable.has(id))));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Selectable = unpaid AND not already sitting in a pending payment. Once
+  // submitted, a transaction moves conceptually into "Payment history" —
+  // showing it as payable again here would let the same fee get
+  // double-submitted before the first attempt is even reviewed.
+  const payable      = transactions.filter(t => t.status === "unpaid" && !t.paymentId);
+  const awaitingReview = transactions.filter(t => t.status === "unpaid" && t.paymentId);
+  const selectedTotal = transactions.filter(t => selected.has(t.id)).reduce((s,t) => s+t.amount, 0);
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
-  const Stars = ({ n }: { n: number }) => (
-    <div style={{ display:"flex", gap:2 }}>
-      {[1,2,3,4,5].map(s => (
-        <Ic key={s} d={IC.star} size={14} style={{ fill: s<=n ? "var(--amber)" : "transparent", stroke: s<=n ? "var(--amber)" : "var(--hair)" }}/>
-      ))}
-    </div>
-  );
+  async function submitPayment() {
+    if (!token || selected.size === 0) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/billing/payments", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ transactionIds: Array.from(selected), method:"bank_transfer" }),
+      });
+      if (res.ok) {
+        setToast("Payment submitted — we'll confirm once it's received.");
+        refresh();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setToast(body.error ?? "Failed to submit payment.");
+      }
+    } finally {
+      setSubmitting(false);
+      setTimeout(() => setToast(null), 3500);
+    }
+  }
+
+  async function exportCsv() {
+    if (!token) return;
+    const res = await fetch("/api/billing/export", { headers:{ Authorization:`Bearer ${token}` } });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `lawkaki-billing-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  if (loading) return <div style={{ padding:40, textAlign:"center", color:"var(--warm-grey)", fontSize:13 }}>Loading…</div>;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-      {/* Sub-tabs */}
-      <div style={{ display:"flex", gap:8 }}>
-        {([["pending", `Pending (${pending.length})`], ["given","Given"], ["received","Received"]] as const).map(([k, l]) => (
-          <button key={k} onClick={() => { setSubTab(k); setActiveId(null); }} style={{ padding:"7px 14px", borderRadius:999, border:`1px solid ${subTab===k ? "var(--black)" : "var(--hair)"}`, background: subTab===k ? "var(--black)" : "#FFF", color: subTab===k ? "var(--off-white)" : "var(--black)", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-            {l}
-          </button>
-        ))}
+    <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
+      {/* Summary */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <StatCard label="Outstanding balance" value={`RM ${summary?.totalUnpaid.toFixed(2) ?? "0.00"}`} accent={summary?.thresholdExceeded ? "var(--red)" : "var(--black)"}/>
+        <StatCard label="Unpaid transactions" value={String(summary?.unpaidCount ?? 0)} accent="var(--black)"/>
       </div>
 
-      {/* Pending */}
-      {subTab==="pending" && (
-        pending.length===0
-          ? <div style={{ padding:40, textAlign:"center", color:"var(--warm-grey)", fontSize:14 }}>No reviews pending. You&apos;re all caught up.</div>
-          : pending.map(r => (
-            <div key={r.id} style={{ background:"#FFF", border:`1px solid ${activeId===r.id ? "var(--amber)" : "var(--hair)"}`, borderRadius:14, padding:"18px 20px", display:"flex", flexDirection:"column", gap:14, transition:"border-color 140ms" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                  <div className="lk-avatar" style={{ background:"var(--black)", color:"var(--off-white)", width:40, height:40, fontSize:14 }}>
-                    {r.counterparty.initials}
-                  </div>
-                  <div>
-                    <div style={{ fontSize:15, fontWeight:700 }}>{r.counterparty.name}</div>
-                    <div style={{ fontSize:12, color:"var(--warm-grey)" }}>{r.venue} · {r.date}</div>
-                    <span className={`lk-chip lk-chip--sm${r.role==="picker" ? " lk-chip--solid" : ""}`} style={{ fontSize:10, marginTop:4, display:"inline-flex" }}>
-                      {r.role==="poster" ? "You posted · Rate picker" : "You picked · Rate poster"}
-                    </span>
-                  </div>
-                </div>
-                <div style={{ fontSize:16, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>RM {r.fee}</div>
-              </div>
-              <div style={{ fontSize:12, color:"var(--warm-grey)" }}>{r.docType}</div>
+      {summary && summary.thresholdExceeded && (
+        <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:"var(--red-soft)", border:"1px solid var(--red)", borderRadius:12 }}>
+          <Ic d={IC.alert} size={18} style={{ color:"var(--red)", flexShrink:0 }}/>
+          <span style={{ fontSize:13, fontWeight:600, color:"var(--red)" }}>
+            Your outstanding balance is over RM {summary.threshold.toFixed(2)} — all unpaid transactions below are due now, regardless of their individual due date.
+          </span>
+        </div>
+      )}
 
-              {activeId !== r.id ? (
-                <button className="lk-btn lk-btn--sm" onClick={() => { setActiveId(r.id); setRating(0); setComment(""); }}>
-                  <Ic d={IC.star} size={14}/> {r.reviewLabel}
-                </button>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:14, paddingTop:8, borderTop:"1px solid var(--pale-grey)" }}>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:600, marginBottom:8 }}>
-                      {r.role==="poster" ? "How was your picking kaki?" : "How was the posting kaki?"}
+      {/* Transactions to pay */}
+      <Section title="Transactions">
+        {payable.length === 0 && awaitingReview.length === 0 ? (
+          <div style={{ padding:32, textAlign:"center", color:"var(--warm-grey)", fontSize:13, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14 }}>
+            Nothing outstanding. You&apos;re all paid up.
+          </div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {payable.length > 0 && (
+              <div style={{ display:"flex", flexDirection:"column", gap:0, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, overflow:"hidden" }}>
+                {payable.map((t, idx) => (
+                  <label key={t.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 18px", borderBottom: idx<payable.length-1 ? "1px solid var(--pale-grey)" : "none", cursor:"pointer" }}>
+                    <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} style={{ width:16, height:16, flexShrink:0, accentColor:"var(--black)" }}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:14, fontWeight:700, letterSpacing:"-0.01em", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.job?.venue ?? "Job removed"}</div>
+                      <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:2 }}>{t.job?.docType} · Due {fmtDate(t.dueAt)}</div>
                     </div>
-                    <div style={{ display:"flex", gap:6 }}>
-                      {[1,2,3,4,5].map(s => (
-                        <button key={s} onClick={() => setRating(s)} onMouseEnter={() => setHoveredStar(s)} onMouseLeave={() => setHoveredStar(0)}
-                          style={{ width:44, height:44, borderRadius:10, border:"none", cursor:"pointer", background: (hoveredStar>=s || rating>=s) ? "var(--amber-soft)" : "var(--pale-grey)", display:"flex", alignItems:"center", justifyContent:"center", transition:"background 100ms" }}>
-                          <Ic d={IC.star} size={22} style={{ fill: (hoveredStar>=s||rating>=s) ? "var(--amber)" : "transparent", stroke: (hoveredStar>=s||rating>=s) ? "var(--amber)" : "var(--warm-grey)", transition:"fill 100ms, stroke 100ms" }}/>
-                        </button>
+                    <PaymentBadge status={t.isDueNow ? "overdue" : "pending"}/>
+                    <div style={{ width:80, textAlign:"right", fontSize:15, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>RM {t.amount.toFixed(2)}</div>
+                  </label>
+                ))}
+              </div>
+            )}
+            {awaitingReview.length > 0 && (
+              <div style={{ fontSize:12, color:"var(--warm-grey)", padding:"0 4px" }}>
+                {awaitingReview.length} more awaiting confirmation — see Payment history below.
+              </div>
+            )}
+          </div>
+        )}
+      </Section>
+
+      {/* Pay selected */}
+      {payable.length > 0 && (
+        <Section title="Pay">
+          <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, padding:"18px 20px", display:"flex", flexDirection:"column", gap:16 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <span style={{ fontSize:13, fontWeight:600, color:"var(--warm-grey)" }}>Selected total</span>
+              <span style={{ fontSize:24, fontWeight:800, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.02em" }}>RM {selectedTotal.toFixed(2)}</span>
+            </div>
+
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:"var(--warm-grey)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Payment method</div>
+              <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", border:"2px solid var(--black)", borderRadius:10 }}>
+                <Ic d={IC.credit} size={16}/>
+                <span style={{ fontSize:13, fontWeight:600, flex:1 }}>Bank transfer</span>
+                <Ic d={IC.check} size={14}/>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", border:"1px solid var(--hair)", borderRadius:10, opacity:0.5 }}>
+                <Ic d={IC.credit} size={16}/>
+                <span style={{ fontSize:13, fontWeight:600, flex:1 }}>Payment gateway</span>
+                <span style={{ fontSize:11, fontWeight:700, color:"var(--warm-grey)", textTransform:"uppercase", letterSpacing:"0.04em" }}>Coming soon</span>
+              </div>
+            </div>
+
+            <div style={{ padding:"12px 14px", background:"var(--pale-grey)", borderRadius:10, display:"flex", flexDirection:"column", gap:4 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"var(--warm-grey)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Transfer to</div>
+              <div style={{ fontSize:13, fontWeight:600 }}>{PLATFORM_BANK.bankName} · {PLATFORM_BANK.accountName}</div>
+              <div style={{ fontSize:13, fontVariantNumeric:"tabular-nums", color:"var(--warm-grey)" }}>{PLATFORM_BANK.accountNumber}</div>
+              <div style={{ fontSize:11.5, color:"var(--warm-grey)", marginTop:4 }}>{PLATFORM_BANK.reference}</div>
+            </div>
+
+            <button
+              className="lk-btn lk-btn--accent"
+              disabled={selected.size === 0 || submitting}
+              onClick={submitPayment}
+              style={{ width:"100%" }}
+            >
+              {submitting ? "Submitting…" : `I've made this payment — RM ${selectedTotal.toFixed(2)}`}
+            </button>
+            {toast && <div style={{ fontSize:12.5, color:"var(--warm-grey)", textAlign:"center" }}>{toast}</div>}
+          </div>
+        </Section>
+      )}
+
+      {/* Payment history */}
+      <Section
+        title="Payment history"
+        action={payments.length > 0 ? (
+          <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={exportCsv}>
+            <Ic d={IC.download} size={14}/> Export CSV
+          </button>
+        ) : undefined}
+      >
+        {payments.length === 0 ? (
+          <div style={{ padding:32, textAlign:"center", color:"var(--warm-grey)", fontSize:13, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14 }}>
+            No payments made yet.
+          </div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {payments.map(p => {
+              const isOpen = expanded === p.id;
+              return (
+                <div key={p.id} style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, overflow:"hidden" }}>
+                  <button
+                    onClick={() => setExpanded(isOpen ? null : p.id)}
+                    style={{ width:"100%", display:"flex", alignItems:"center", gap:14, padding:"14px 18px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left", fontFamily:"inherit" }}
+                  >
+                    <Ic d={isOpen ? IC.chevD : IC.chevR} size={14} style={{ color:"var(--warm-grey)", flexShrink:0 }}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13.5, fontWeight:700 }}>{fmtDate(p.submittedAt)}</div>
+                      <div style={{ fontSize:11.5, color:"var(--warm-grey)", marginTop:2 }}>{p.transactions.length} case{p.transactions.length!==1?"s":""} · Bank transfer</div>
+                    </div>
+                    <PaymentStatusBadge status={p.status}/>
+                    <div style={{ width:80, textAlign:"right", fontSize:15, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>RM {p.totalAmount.toFixed(2)}</div>
+                  </button>
+                  {isOpen && (
+                    <div style={{ borderTop:"1px solid var(--pale-grey)" }}>
+                      {p.transactions.map((t, idx) => (
+                        <div key={t.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"10px 18px 10px 46px", borderBottom: idx<p.transactions.length-1 ? "1px solid var(--pale-grey)" : "none" }}>
+                          <div style={{ flex:1, minWidth:0, fontSize:12.5 }}>
+                            {t.venue ?? "Job removed"} <span style={{ color:"var(--warm-grey)" }}>· {t.docType}</span>
+                          </div>
+                          <div style={{ fontSize:12.5, fontVariantNumeric:"tabular-nums", fontWeight:600 }}>RM {t.amount.toFixed(2)}</div>
+                        </div>
                       ))}
                     </div>
-                    {rating>0 && (
-                      <div style={{ fontSize:12, color:"var(--amber)", fontWeight:600, marginTop:6 }}>
-                        {STAR_LABELS[rating]}
-                        <span style={{ color:"var(--warm-grey)", fontWeight:400, marginLeft:6 }}>
-                          — {r.role==="poster" ? "as picker" : "as poster"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>Comments <span style={{ color:"var(--warm-grey)", fontWeight:400 }}>(optional)</span></div>
-                    <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}
-                      placeholder={r.role==="poster" ? "e.g. Arrived on time, thorough with the documents. Would use again." : "e.g. Clear brief, documents were ready on time. Smooth job."}
-                      style={{ width:"100%", padding:"12px 14px", background:"#FFF", border:"1.5px solid var(--hair)", borderRadius:10, resize:"vertical" as const, fontFamily:"inherit", fontSize:14, fontWeight:500, color:"var(--black)", outline:"none", minHeight:80, lineHeight:1.5 }}
-                      onFocus={e => { e.target.style.borderColor="var(--black)"; e.target.style.boxShadow="0 0 0 4px rgba(15,31,51,0.06)"; }}
-                      onBlur={e => { e.target.style.borderColor="var(--hair)"; e.target.style.boxShadow="none"; }}
-                    />
-                  </div>
-                  <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-                    <button className="lk-btn lk-btn--ghost lk-btn--sm" onClick={() => setActiveId(null)}>Cancel</button>
-                    <button className="lk-btn lk-btn--accent lk-btn--sm" disabled={rating===0} onClick={() => submitReview(r)}>Submit review</button>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))
-      )}
-
-      {/* Given */}
-      {subTab==="given" && (
-        given.length===0
-          ? <div style={{ padding:40, textAlign:"center", color:"var(--warm-grey)", fontSize:14 }}>No reviews given yet.</div>
-          : (
-            <div style={{ display:"flex", flexDirection:"column", gap:0, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, overflow:"hidden" }}>
-              {given.map((r, idx) => {
-                const cp = r.counterparty || r.picker || r.poster;
-                return (
-                  <div key={r.id} style={{ padding:"16px 20px", borderBottom: idx<given.length-1 ? "1px solid var(--pale-grey)" : "none" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div className="lk-avatar" style={{ width:28, height:28, fontSize:10 }}>{cp?.initials}</div>
-                        <div>
-                          <div style={{ fontSize:14, fontWeight:600 }}>{cp?.name}</div>
-                          <div style={{ fontSize:11, color:"var(--warm-grey)" }}>
-                            {r.venue} · {r.date}
-                            <span style={{ marginLeft:6, padding:"1px 6px", borderRadius:999, background:"var(--pale-grey)", fontSize:10, fontWeight:600 }}>
-                              {r.role==="poster" ? "Reviewed as poster" : "Reviewed as picker"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <Stars n={r.rating}/>
-                    </div>
-                    {r.comment && <div style={{ fontSize:13, color:"var(--black)", lineHeight:1.5, paddingLeft:38 }}>&ldquo;{r.comment}&rdquo;</div>}
-                  </div>
-                );
-              })}
-            </div>
-          )
-      )}
-
-      {/* Received */}
-      {subTab==="received" && (
-        received.length===0
-          ? <div style={{ padding:40, textAlign:"center", color:"var(--warm-grey)", fontSize:14 }}>No reviews received yet.</div>
-          : (
-            <div style={{ display:"flex", flexDirection:"column", gap:0, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, overflow:"hidden" }}>
-              {received.map((r, idx) => (
-                <div key={r.id} style={{ padding:"16px 20px", borderBottom: idx<received.length-1 ? "1px solid var(--pale-grey)" : "none" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <div className="lk-avatar" style={{ width:28, height:28, fontSize:10 }}>{r.initials}</div>
-                      <div>
-                        <div style={{ fontSize:14, fontWeight:600 }}>{r.from}</div>
-                        <div style={{ fontSize:11, color:"var(--warm-grey)" }}>{r.date}</div>
-                      </div>
-                    </div>
-                    <Stars n={r.rating}/>
-                  </div>
-                  {r.comment && <div style={{ fontSize:13, color:"var(--black)", lineHeight:1.5, paddingLeft:38 }}>&ldquo;{r.comment}&rdquo;</div>}
-                </div>
-              ))}
-            </div>
-          )
-      )}
-
-      {toast && <Toast message={toast} onDone={() => setToast(null)}/>}
+              );
+            })}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
@@ -911,33 +892,65 @@ function ReviewsTab() {
 /* ============================================================
    Layout
    ============================================================ */
-function SettingsNav({ onBack, initials }: { onBack?: () => void; initials: string }) {
+function SettingsNav({ onBack, initials, isMobile = false }: { onBack?: () => void; initials: string; isMobile?: boolean }) {
   return (
-    <header style={{ height:64, background:"#FFF", borderBottom:"1px solid var(--hair)", display:"flex", alignItems:"center", padding:"0 24px", gap:20, flexShrink:0 }}>
-      <a href="/" style={{ display:"flex", alignItems:"center", gap:12, textDecoration:"none", flexShrink:0 }}>
+    <header style={{
+      height: 64, background:"#FFF", borderBottom:"1px solid var(--hair)", display:"flex", alignItems:"center",
+      padding: isMobile ? "0 12px" : "0 24px", gap: isMobile ? 10 : 20, flexShrink:0,
+      position:"sticky", top:0, zIndex:30,
+    }}>
+      <a href="/" style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 12, textDecoration:"none", flexShrink:0 }}>
         <svg width="32" height="40" viewBox="0 0 80 100" fill="none">
           <path d="M40 4 C 60.4 4 76 19.6 76 40 C 76 53.6 67.5 66 56 76 L 40 96 L 24 76 C 12.5 66 4 53.6 4 40 C 4 19.6 19.6 4 40 4 Z" fill="#0F1F33"/>
-          <g fill="#FAF7F2" transform="translate(40 42) scale(0.34) translate(-30 -50)">
-            <ellipse cx="30" cy="64" rx="18" ry="28"/><ellipse cx="14" cy="32" rx="4.4" ry="5.4"/>
-            <ellipse cx="23" cy="22" rx="4" ry="4.8"/><ellipse cx="32" cy="18" rx="3.6" ry="4.4"/>
-            <ellipse cx="41" cy="22" rx="3.2" ry="4"/><ellipse cx="48" cy="30" rx="2.8" ry="3.4"/>
-          </g>
         </svg>
         <div>
           <div style={{ fontSize:20, fontWeight:700, letterSpacing:"-0.02em", lineHeight:1.1, color:"var(--black)" }}>Law Kaki</div>
-          <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:500 }}>Your best legal kaki on the ground.</div>
+          {!isMobile && (
+            <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:500 }}>Your best legal kaki on the ground.</div>
+          )}
         </div>
       </a>
       <div style={{ flex:1 }}/>
-      <button onClick={onBack} style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:13, fontWeight:600, color:"var(--warm-grey)", background:"transparent", border:"none", cursor:"pointer", fontFamily:"inherit", padding:"8px 14px", borderRadius:999 }}>
-        <Ic d={IC.arrowL} size={16}/> Back to dashboard
+      <button
+        onClick={onBack}
+        aria-label="Back to dashboard"
+        title="Back to dashboard"
+        style={{
+          display:"inline-flex", alignItems:"center", gap:6, fontSize:13, fontWeight:600, color:"var(--warm-grey)",
+          background:"transparent", border:"none", cursor:"pointer", fontFamily:"inherit",
+          padding: isMobile ? 8 : "8px 14px", borderRadius:999,
+        }}
+      >
+        <Ic d={IC.arrowL} size={16}/> {!isMobile && "Back to dashboard"}
       </button>
-      <div className="lk-avatar" style={{ background:"var(--black)", color:"var(--off-white)", width:36, height:36, fontSize:13 }}>{initials}</div>
+      <div className="lk-avatar" style={{ background:"var(--black)", color:"var(--off-white)", width:36, height:36, fontSize:13, flexShrink:0 }}>{initials}</div>
     </header>
   );
 }
 
-function SettingsSidebar({ active, onChange }: { active: SettingsTab; onChange: (t: SettingsTab) => void }) {
+function SettingsSidebar({ active, onChange, isMobile = false }: { active: SettingsTab; onChange: (t: SettingsTab) => void; isMobile?: boolean }) {
+  if (isMobile) {
+    return (
+      <nav style={{
+        display:"flex", gap:6, padding:"10px 12px", borderBottom:"1px solid var(--hair)",
+        background:"#FFF", overflowX:"auto", flexShrink:0, position:"sticky", top:64, zIndex:20,
+      }}>
+        {TABS.map(tab => (
+          <button key={tab.id} onClick={() => onChange(tab.id)} style={{
+            display:"flex", alignItems:"center", gap:8, padding:"8px 14px", whiteSpace:"nowrap",
+            background: active===tab.id ? "var(--black)" : "transparent",
+            border:`1px solid ${active===tab.id ? "var(--black)" : "var(--hair)"}`,
+            borderRadius:999, cursor:"pointer", fontFamily:"inherit", fontSize:13,
+            fontWeight: active===tab.id ? 700 : 500,
+            color: active===tab.id ? "var(--off-white)" : "var(--warm-grey)",
+            flexShrink:0,
+          }}>
+            <Ic d={tab.icon} size={16}/>{tab.label}
+          </button>
+        ))}
+      </nav>
+    );
+  }
   return (
     <nav style={{ width:240, flexShrink:0, padding:"20px 12px", borderRight:"1px solid var(--hair)", background:"#FFF", display:"flex", flexDirection:"column", gap:4 }}>
       <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", padding:"8px 12px", marginBottom:4 }}>Settings</div>
@@ -961,28 +974,51 @@ interface SettingsProps {
   userName?: string;
   userPhone?: string;
   onNameChange?: (n: string) => void;
+  token?: string;
+  bankDetails?: BankDetails | null;
+  onBankDetailsSaved?: (d: BankDetails) => void;
+  initialTab?: SettingsTab;
+  focusPayment?: boolean;
 }
-export default function Settings({ onClose, onSignOut }: SettingsProps) {
-  const [tab, setTab]   = useState<SettingsTab>("profile");
-  const [user, setUser] = useState<User>({ ...INIT_USER });
+function initialsFrom(name: string): string {
+  return name.split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+
+export default function Settings({ onClose, onSignOut, token, userName, userPhone, bankDetails, onBankDetailsSaved, initialTab, focusPayment }: SettingsProps) {
+  const [tab, setTab]   = useState<SettingsTab>(initialTab ?? "profile");
+  const isMobile = useIsMobile();
+  // The rest of this profile (rating, job count, availability, etc.) is
+  // still mock data — see docs/PRD.md — but name/phone are real, since the
+  // bank details form below uses the real name as the account holder
+  // name's default (editable — any account holder is allowed).
+  const [user, setUser] = useState<User>(() => ({
+    ...INIT_USER,
+    ...(userName  ? { name: userName, initials: initialsFrom(userName) } : {}),
+    ...(userPhone ? { phone: userPhone } : {}),
+  }));
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:"var(--off-white)" }}>
-      <SettingsNav onBack={onClose} initials={user.initials}/>
-      <div style={{ display:"flex", flex:1, minHeight:0 }}>
-        <SettingsSidebar active={tab} onChange={setTab}/>
-        <main className="lk-scroll" style={{ flex:1, overflowY:"auto", padding:"28px 40px 80px" }}>
+      <SettingsNav onBack={onClose} initials={user.initials} isMobile={isMobile}/>
+      <div style={{ display:"flex", flexDirection: isMobile ? "column" : "row", flex:1, minHeight:0 }}>
+        <SettingsSidebar active={tab} onChange={setTab} isMobile={isMobile}/>
+        <main className="lk-scroll" style={{ flex:1, minHeight:0, overflowY:"auto", padding: isMobile ? "20px 16px 40px" : "28px 40px 80px" }}>
           <div style={{ maxWidth:720 }}>
             <div style={{ marginBottom:24 }}>
-              <h1 style={{ fontSize:28, fontWeight:700, letterSpacing:"-0.025em", margin:"0 0 4px" }}>
+              <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight:700, letterSpacing:"-0.025em", margin:"0 0 4px" }}>
                 {TABS.find(t => t.id===tab)?.label}
               </h1>
               <p style={{ fontSize:14, color:"var(--warm-grey)", margin:0 }}>{TAB_SUBS[tab]}</p>
             </div>
-            {tab==="profile"  && <ProfileTab  user={user} setUser={setUser} onSignOut={onSignOut}/>}
+            {tab==="profile"  && (
+              <ProfileTab
+                user={user} setUser={setUser} onSignOut={onSignOut}
+                token={token} bankDetails={bankDetails} onBankDetailsSaved={onBankDetailsSaved}
+                focusPayment={focusPayment} isMobile={isMobile}
+              />
+            )}
             {tab==="history"  && <HistoryTab/>}
-            {tab==="upcoming" && <UpcomingTab/>}
-            {tab==="reviews"  && <ReviewsTab/>}
+            {tab==="billing"  && <BillingTab token={token}/>}
           </div>
         </main>
       </div>

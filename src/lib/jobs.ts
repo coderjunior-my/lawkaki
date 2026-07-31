@@ -11,7 +11,7 @@ export interface Poster {
 
 export interface Job {
   id:       string;
-  state:    "open" | "urgent" | "taken";
+  state:    "open" | "urgent" | "taken" | "completed" | "cancelled" | "expired";
   docType:  string;
   venue:    string;
   address:  string;
@@ -19,6 +19,7 @@ export interface Job {
   time:     string;
   date:     string;
   dateMeta: string;
+  appointmentAt: string; // ISO — for sorting; use date/dateMeta/time for display
   fee:      number;
   distance: string;
   duration: string;
@@ -27,4 +28,5 @@ export interface Job {
   takenBy?: { name: string; initials: string };
   x:        number;
   y:        number;
+  expiredInterestCount?: number;
 }

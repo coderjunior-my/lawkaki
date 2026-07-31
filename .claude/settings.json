@@ -1,7 +1,25 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(find /Users/isabelleyeoh/Developer/lawkaki -name \"*.sql\" -o -name \".env*\" | grep -v node_modules | sort)",
+      "Read(//Users/isabelleyeoh/Developer/lawkaki/**)",
+      "Bash(npm install *)",
+      "Bash(cat /Users/isabelleyeoh/.npm/_logs/2026-06-20T11_51_05_590Z-debug-0.log | tail -40)",
+      "Read(//Users/isabelleyeoh/.npm/_logs/**)",
+      "WebFetch(domain:claude.ai)",
+      "Bash(git -C /Users/isabelleyeoh/Developer/lawkaki/lawkaki status)",
+      "Bash(git -C /Users/isabelleyeoh/Developer/lawkaki/lawkaki log --oneline -6)",
+      "Bash(git -C /Users/isabelleyeoh/Developer/lawkaki/lawkaki remote -v)",
+      "Bash(git -C /Users/isabelleyeoh/Developer/lawkaki/lawkaki checkout -b feat/task-tracker-settings)",
+      "Bash(git -C /Users/isabelleyeoh/Developer/lawkaki/lawkaki commit -m ' *)",
+      "Bash(git commit -m 'feat: add Task Tracker and Settings pages, complete full-stack wiring *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git commit -m 'fix: lazy-initialize Supabase client to prevent build failure when env vars absent *)",
+      "Bash(git commit -m ' *)",
+      "Bash(npm run *)",
+      "WebFetch(domain:legaldirectory.malaysianbar.org.my)"
     ]
   }
 }

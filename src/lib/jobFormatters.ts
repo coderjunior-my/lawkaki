@@ -4,14 +4,14 @@ import type { MalaysianState } from "./types";
 
 const MYT = "Asia/Kuala_Lumpur";
 
-function initials(name: string | null): string {
+export function initials(name: string | null): string {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 1) return parts[0][0].toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function parseApptAt(iso: string) {
+export function parseApptAt(iso: string) {
   const d = new Date(iso);
   const now = new Date();
 
@@ -75,6 +75,7 @@ export function formatBrowseJob(row: any) {
     time,
     date,
     dateMeta,
+    appointmentAt: row.appointment_at,
     fee:      row.fee_indicative,
     distance: row.distance_text ?? "—",
     duration: row.duration_text ?? "—",
@@ -98,9 +99,11 @@ export function formatBrowseJob(row: any) {
 export function formatPostedJob(row: any, interests: any[]) {
   const { time, date, dateMeta } = parseApptAt(row.appointment_at);
   const picker = row.picker;
+  const pendingInterests = interests.filter((int) => (int.status ?? "pending") === "pending");
+  const expiredCount     = interests.filter((int) => int.status === "expired").length;
   return {
     id:       row.id,
-    state:    row.state as "open" | "urgent" | "taken",
+    state:    row.state as "open" | "urgent" | "taken" | "completed" | "cancelled" | "expired",
     docType:  row.doc_type,
     venue:    row.venue,
     address:  row.address,
@@ -108,6 +111,7 @@ export function formatPostedJob(row: any, interests: any[]) {
     time,
     date,
     dateMeta,
+    appointmentAt: row.appointment_at,
     fee:      row.fee_indicative,
     distance: row.distance_text ?? "—",
     duration: row.duration_text ?? "—",
@@ -116,7 +120,8 @@ export function formatPostedJob(row: any, interests: any[]) {
     takenBy: picker ? { name: picker.name, initials: initials(picker.name) } : undefined,
     x:        row.map_x ?? 500,
     y:        row.map_y ?? 350,
-    interests: interests.map((int) => {
+    expiredInterestCount: expiredCount,
+    interests: pendingInterests.map((int) => {
       const p = int.picker;
       const rating = int.rating;  // from picker_ratings view, may be null
       const COLD_START = 3;
