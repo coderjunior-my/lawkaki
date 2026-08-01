@@ -9,6 +9,9 @@ import Dashboard from "@/components/Dashboard";
    ============================================================ */
 
 const todayISO = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuala_Lumpur" }).format(new Date());
+const tomorrowISO = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuala_Lumpur" }).format(
+  new Date(Date.now() + 24 * 60 * 60 * 1000)
+);
 
 const MOCK_POSTED = [
   {
@@ -135,6 +138,7 @@ const MOCK_BROWSE = [
     time: "11:00 am",
     date: "Tomorrow",
     dateMeta: "Tomorrow",
+    appointmentAt: `${tomorrowISO}T11:00:00+08:00`,
     fee: 180,
     distance: "—",
     duration: "—",
