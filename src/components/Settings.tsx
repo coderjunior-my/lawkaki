@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, CSSProperties } from "react";
 import { PLATFORM_BANK_DETAILS as PLATFORM_BANK } from "@/lib/billing";
 import { MALAYSIAN_BANKS } from "@/lib/banks";
+import CriticalNotice from "@/components/CriticalNotice";
 
 /* ============================================================
    Icons (Lucide-style, outlined, 2px stroke)
@@ -979,12 +980,13 @@ interface SettingsProps {
   onBankDetailsSaved?: (d: BankDetails) => void;
   initialTab?: SettingsTab;
   focusPayment?: boolean;
+  billingDueNow?: number;
 }
 function initialsFrom(name: string): string {
   return name.split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 }
 
-export default function Settings({ onClose, onSignOut, token, userName, userPhone, bankDetails, onBankDetailsSaved, initialTab, focusPayment }: SettingsProps) {
+export default function Settings({ onClose, onSignOut, token, userName, userPhone, bankDetails, onBankDetailsSaved, initialTab, focusPayment, billingDueNow = 0 }: SettingsProps) {
   const [tab, setTab]   = useState<SettingsTab>(initialTab ?? "profile");
   const isMobile = useIsMobile();
   // The rest of this profile (rating, job count, availability, etc.) is
@@ -998,8 +1000,36 @@ export default function Settings({ onClose, onSignOut, token, userName, userPhon
   }));
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:"var(--off-white)" }}>
+    // height:100% (not 100vh) — this component is mounted inside the
+    // dashboard's flex layout, not directly under <body>. 100vh ignores
+    // whatever space the critical notices below already take, so the
+    // bottom of the page gets clipped whenever one is showing.
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", background:"var(--off-white)" }}>
       <SettingsNav onBack={onClose} initials={user.initials} isMobile={isMobile}/>
+
+      {/* Same stacking as the home screen: header first, then critical
+          notices — kept here (rather than above this component) so the
+          order never flips when settings is open. */}
+      {bankDetails === null && (
+        <CriticalNotice
+          message="Add your bank details so you can get paid for jobs you pick up."
+          actionLabel="Add bank details"
+          onAction={() => {
+            setTab("profile");
+            requestAnimationFrame(() => {
+              document.getElementById("lk-settings-payment-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+          }}
+        />
+      )}
+      {billingDueNow > 0 && (
+        <CriticalNotice
+          message={`You have RM ${billingDueNow.toFixed(2)} in platform fees due now.`}
+          actionLabel="Pay now"
+          onAction={() => setTab("billing")}
+        />
+      )}
+
       <div style={{ display:"flex", flexDirection: isMobile ? "column" : "row", flex:1, minHeight:0 }}>
         <SettingsSidebar active={tab} onChange={setTab} isMobile={isMobile}/>
         <main className="lk-scroll" style={{ flex:1, minHeight:0, overflowY:"auto", padding: isMobile ? "20px 16px 40px" : "28px 40px 80px" }}>

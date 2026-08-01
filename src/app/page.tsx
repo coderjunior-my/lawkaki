@@ -22,6 +22,31 @@ export default function Page() {
     setLoading(false);
   }, []);
 
+  // Form inputs are intentionally under 16px, so mobile Safari auto-zooms
+  // in on focus — that's the desired "easier to type" behaviour. But Safari
+  // doesn't reliably zoom back out once the keyboard is dismissed, which
+  // strands the user zoomed in on part of the form with the CTA off-screen.
+  // Briefly capping maximum-scale on blur forces it to snap back to 1x;
+  // restoring it right after keeps pinch-zoom and the next field's
+  // zoom-in working normally.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return;
+    const original = meta.getAttribute("content") ?? "width=device-width, initial-scale=1";
+
+    function onFocusOut(e: FocusEvent) {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") return;
+      meta!.setAttribute("content", `${original}, maximum-scale=1`);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => meta!.setAttribute("content", original));
+      });
+    }
+
+    document.addEventListener("focusout", onFocusOut);
+    return () => document.removeEventListener("focusout", onFocusOut);
+  }, []);
+
   if (loading) {
     return (
       <div style={{

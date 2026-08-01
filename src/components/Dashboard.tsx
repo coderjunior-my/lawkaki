@@ -327,40 +327,6 @@ function TopNav({
     >
       <LogoMark isMobile={isMobile} />
 
-      {/* Search */}
-      <div style={{ flex: 1, maxWidth: 420, marginLeft: 16, position: "relative", display: isMobile ? "none" : undefined }}>
-        <span
-          style={{
-            position: "absolute",
-            left: 12,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "var(--warm-grey)",
-            display: "flex",
-            pointerEvents: "none",
-          }}
-        >
-          <Icon d={I.search} size={15} />
-        </span>
-        <input
-          placeholder="Search by venue, document, or case no."
-          style={{
-            width: "100%",
-            height: 36,
-            paddingLeft: 36,
-            paddingRight: 14,
-            background: "var(--off-white)",
-            border: "1px solid transparent",
-            borderRadius: 999,
-            fontSize: 13,
-            color: "var(--black)",
-            fontFamily: "inherit",
-            fontWeight: 500,
-            outline: "none",
-          }}
-        />
-      </div>
-
       <div style={{ flex: 1 }} />
 
       {/* Tasks — jump straight to the task tracker */}
@@ -419,14 +385,46 @@ interface Filters {
 const DATE_OPTS = ["Today", "Tomorrow", "This week", "All upcoming"];
 const DOC_TYPES = ["All", "SPA signing", "Loan docs", "Discharge", "Transfer", "Stamping"];
 
+// Days between a job's appointment and today, in MYT — used by the date chip.
+// Returns NaN (rather than throwing) if appointmentAt is missing or malformed.
+function daysFromTodayMYT(appointmentAt: string): number {
+  const d = new Date(appointmentAt);
+  if (Number.isNaN(d.getTime())) return NaN;
+  const isoDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuala_Lumpur" }).format(d);
+  const jobDate = Date.parse(isoDate);
+  const today = Date.parse(getTodayISO());
+  return Math.round((jobDate - today) / 86_400_000);
+}
+
+function matchesDateFilter(appointmentAt: string, dateFilter: string): boolean {
+  if (dateFilter === "All upcoming") return true;
+  const days = daysFromTodayMYT(appointmentAt);
+  if (Number.isNaN(days)) return true; // malformed appointment time — don't hide the job over it
+  if (dateFilter === "Today") return days === 0;
+  if (dateFilter === "Tomorrow") return days === 1;
+  if (dateFilter === "This week") return days >= 0 && days <= 6;
+  return true;
+}
+
+function matchesSearch(job: Job, search: string): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  return [job.venue, job.address, job.area, job.docType, job.poster?.name ?? ""]
+    .some((field) => field.toLowerCase().includes(q));
+}
+
 function FilterBar({
   filters,
   setFilters,
   count,
+  search,
+  onSearchChange,
 }: {
   filters: Filters;
   setFilters: (f: Filters) => void;
   count: number;
+  search: string;
+  onSearchChange: (v: string) => void;
 }) {
   return (
     <div
@@ -441,6 +439,53 @@ function FilterBar({
         flexShrink: 0,
       }}
     >
+      {/* Search */}
+      <div style={{ position: "relative" }}>
+        <span
+          style={{
+            position: "absolute",
+            left: 14,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "var(--warm-grey)",
+            display: "flex",
+            pointerEvents: "none",
+          }}
+        >
+          <Icon d={I.search} size={15} />
+        </span>
+        <input
+          className="lk-input"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search by venue, area, or document type"
+          style={{ height: 40, paddingLeft: 38, paddingRight: search ? 36 : 16 }}
+        />
+        {search && (
+          <button
+            onClick={() => onSearchChange("")}
+            aria-label="Clear search"
+            style={{
+              position: "absolute",
+              right: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 22,
+              height: 22,
+              border: "none",
+              background: "transparent",
+              color: "var(--warm-grey)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon d={I.close} size={14} />
+          </button>
+        )}
+      </div>
+
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -1682,6 +1727,7 @@ export default function Dashboard({
     docType: "All",
     minFee: 50,
   });
+  const [search, setSearch]           = useState("");
   const [view, setView]               = useState<"browse" | "my-jobs" | "picked" | "tasks">("browse");
   // Set when a notification click-through wants Task list to open on a
   // specific tab (e.g. "interest_received" → confirm tab).
@@ -1771,9 +1817,11 @@ export default function Dashboard({
         )
           return false;
         if (j.fee < filters.minFee) return false;
+        if (!matchesDateFilter(j.appointmentAt, filters.date)) return false;
+        if (!matchesSearch(j, search)) return false;
         return true;
       }),
-    [allJobs, filters]
+    [allJobs, filters, search]
   );
 
   const onAccept = async (j: Job) => {
@@ -1815,7 +1863,10 @@ export default function Dashboard({
         />
       )}
 
-      {bankDetails === null && (
+      {/* Hidden while settings is open — Settings renders its own copy of
+          these right under its own header, so the order (header, then
+          notice) stays consistent instead of flipping when TopNav hides. */}
+      {!showSettings && bankDetails === null && (
         <CriticalNotice
           message="Add your bank details so you can get paid for jobs you pick up."
           actionLabel="Add bank details"
@@ -1823,7 +1874,7 @@ export default function Dashboard({
         />
       )}
 
-      {billingDueNow > 0 && (
+      {!showSettings && billingDueNow > 0 && (
         <CriticalNotice
           message={`You have RM ${billingDueNow.toFixed(2)} in platform fees due now.`}
           actionLabel="Pay now"
@@ -1865,10 +1916,11 @@ export default function Dashboard({
                     setDisplayName(n);
                     localStorage.setItem("lk_name", n);
                   }}
-                  bankDetails={bankDetails ?? null}
+                  bankDetails={bankDetails}
                   onBankDetailsSaved={(d) => setBankDetails(d)}
                   initialTab={settingsInitialTab}
                   focusPayment={settingsFocusPayment}
+                  billingDueNow={billingDueNow}
                 />
               ) : (
                 <>
@@ -1935,7 +1987,13 @@ export default function Dashboard({
                     />
                   ) : (
                     <>
-                      <FilterBar filters={filters} setFilters={setFilters} count={filtered.length} />
+                      <FilterBar
+                        filters={filters}
+                        setFilters={setFilters}
+                        count={filtered.length}
+                        search={search}
+                        onSearchChange={setSearch}
+                      />
                       <div
                         style={{
                           flex: 1,
@@ -1965,9 +2023,9 @@ export default function Dashboard({
                               fontSize: 13,
                             }}
                           >
-                            No jobs match these filters.
+                            {search ? "Nothing matches that." : "No jobs match these filters."}
                             <br />
-                            Try widening your fee range or date.
+                            Try a different area, doc type, or date.
                           </div>
                         )}
                       </div>
