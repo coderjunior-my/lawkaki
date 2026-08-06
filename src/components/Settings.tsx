@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback, CSSProperties } from "react";
 import { PLATFORM_BANK_DETAILS as PLATFORM_BANK } from "@/lib/billing";
 import { MALAYSIAN_BANKS } from "@/lib/banks";
 import CriticalNotice from "@/components/CriticalNotice";
+import ContactCoachmark from "@/components/ContactCoachmark";
+import Popover from "@/components/Popover";
 
 /* ============================================================
    Icons (Lucide-style, outlined, 2px stroke)
@@ -42,12 +44,13 @@ const IC = {
   cal:       "M16 2v4M8 2v4M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
   download:  "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
   alert:     "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01",
+  message:   "M7.9 20A9 9 0 1 0 4 16.1L2 22Z",
 };
 
 /* ============================================================
    Types
    ============================================================ */
-type SettingsTab  = "profile" | "history" | "billing";
+type SettingsTab  = "profile" | "history" | "billing" | "contact";
 type HistFilter   = "all" | "paid" | "pending" | "overdue";
 type UserRole     = "post" | "pick" | "both";
 type JobRole      = "picker" | "poster";
@@ -83,11 +86,13 @@ const TABS: { id: SettingsTab; label: string; icon: string | string[] }[] = [
   { id: "profile",  label: "Profile",     icon: IC.user },
   { id: "history",  label: "Job history", icon: IC.briefcase },
   { id: "billing",  label: "Billing",     icon: IC.credit },
+  { id: "contact",  label: "Contact us",  icon: IC.message },
 ];
 const TAB_SUBS: Record<SettingsTab, string> = {
   profile:  "Manage your account details, availability, and preferences.",
   history:  "All your completed jobs and payment status.",
   billing:  "Pay your platform fee and manage payment history.",
+  contact:  "Reach the Law Kaki team if you need a hand.",
 };
 
 /* ============================================================
@@ -194,11 +199,11 @@ function ActionRow({ icon, label, desc, danger, onClick }: { icon: string | stri
   );
 }
 
-function StatCard({ label, value, accent }: { label: string; value: string; accent: string }) {
+function StatCard({ label, value, accent, isMobile = false }: { label: string; value: string; accent: string; isMobile?: boolean }) {
   return (
-    <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding:"16px 18px", display:"flex", flexDirection:"column", gap:6 }}>
-      <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase" }}>{label}</div>
-      <div style={{ fontSize:22, fontWeight:700, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.02em", color:accent }}>{value}</div>
+    <div style={{ background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, padding: isMobile ? "12px 12px" : "16px 18px", display:"flex", flexDirection:"column", gap:6, minWidth:0 }}>
+      <div style={{ fontSize: isMobile ? 10 : 11, color:"var(--warm-grey)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</div>
+      <div style={{ fontSize: isMobile ? 16 : 22, fontWeight:700, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.02em", color:accent, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{value}</div>
     </div>
   );
 }
@@ -251,6 +256,7 @@ function ProfileTab({
   const [editing, setEditing]     = useState(false);
   const [draft, setDraft]         = useState<User>({ ...user });
   const [firmOpen, setFirmOpen]   = useState(false);
+  const firmBtnRef                = useRef<HTMLButtonElement>(null);
   const [saved, setSaved]         = useState(false);
   const fileRef                   = useRef<HTMLInputElement>(null);
 
@@ -417,25 +423,23 @@ function ProfileTab({
           </EditField>
           <EditField label="Law firm">
             <div style={{ position:"relative" }}>
-              <button onClick={() => setFirmOpen(!firmOpen)} style={{ width:"100%", height:48, padding:"0 16px", display:"flex", alignItems:"center", justifyContent:"space-between", background:"#FFF", border:"1.5px solid var(--hair)", borderRadius:12, cursor:"pointer", fontFamily:"inherit", fontSize:15, fontWeight:500, color:"var(--black)", textAlign:"left" }}>
+              <button ref={firmBtnRef} onClick={() => setFirmOpen(!firmOpen)} style={{ width:"100%", height:48, padding:"0 16px", display:"flex", alignItems:"center", justifyContent:"space-between", background:"#FFF", border:"1.5px solid var(--hair)", borderRadius:12, cursor:"pointer", fontFamily:"inherit", fontSize:15, fontWeight:500, color:"var(--black)", textAlign:"left" }}>
                 {draft.firm} <Ic d={IC.chevD} size={16} style={{ color:"var(--warm-grey)" }}/>
               </button>
-              {firmOpen && (
-                <>
-                  <div style={{ position:"fixed", inset:0, zIndex:19 }} onClick={() => setFirmOpen(false)}/>
-                  <div style={{ position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:20, background:"#FFF", border:"1px solid var(--hair)", borderRadius:12, boxShadow:"0 16px 40px -8px rgba(15,31,51,0.18)", padding:4, maxHeight:220, overflowY:"auto" }}>
-                    {LAW_FIRMS.map(f => (
-                      <button key={f} type="button"
-                        onMouseDown={e => { e.preventDefault(); setDraft({...draft, firm:f}); setFirmOpen(false); }}
-                        style={{ width:"100%", textAlign:"left", padding:"10px 14px", background: draft.firm===f ? "var(--off-white)" : "transparent", border:"none", borderRadius:8, cursor:"pointer", fontFamily:"inherit", fontSize:14, fontWeight: draft.firm===f ? 600 : 400, color:"var(--black)", display:"flex", alignItems:"center", gap:10 }}
-                        onMouseEnter={e => (e.currentTarget.style.background = "var(--off-white)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = draft.firm===f ? "var(--off-white)" : "transparent")}>
-                        {f}{draft.firm===f && <Ic d={IC.check} size={14} style={{ marginLeft:"auto" }}/>}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+              <Popover open={firmOpen} onClose={() => setFirmOpen(false)} anchorRef={firmBtnRef} align="stretch" maxHeight={220} gap={4}
+                panelStyle={{ borderRadius:12, boxShadow:"0 16px 40px -8px rgba(15,31,51,0.18)" }}>
+                <div className="lk-scroll" style={{ overflowY:"auto", padding:4 }}>
+                  {LAW_FIRMS.map(f => (
+                    <button key={f} type="button"
+                      onMouseDown={e => { e.preventDefault(); setDraft({...draft, firm:f}); setFirmOpen(false); }}
+                      style={{ width:"100%", textAlign:"left", padding:"10px 14px", background: draft.firm===f ? "var(--off-white)" : "transparent", border:"none", borderRadius:8, cursor:"pointer", fontFamily:"inherit", fontSize:14, fontWeight: draft.firm===f ? 600 : 400, color:"var(--black)", display:"flex", alignItems:"center", gap:10 }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "var(--off-white)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = draft.firm===f ? "var(--off-white)" : "transparent")}>
+                      {f}{draft.firm===f && <Ic d={IC.check} size={14} style={{ marginLeft:"auto" }}/>}
+                    </button>
+                  ))}
+                </div>
+              </Popover>
             </div>
           </EditField>
           <EditField label="Role">
@@ -572,7 +576,7 @@ function ProfileTab({
 /* ============================================================
    History tab
    ============================================================ */
-function HistoryTab() {
+function HistoryTab({ isMobile = false }: { isMobile?: boolean }) {
   const jobs = INIT_HISTORY;
   const [filter, setFilter] = useState<HistFilter>("all");
   const filtered = filter === "all" ? jobs : jobs.filter(j => j.payment === filter);
@@ -584,16 +588,16 @@ function HistoryTab() {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
       {/* Summary cards */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
-        <StatCard label="Total earned" value={`RM ${totalEarned}`} accent="var(--green)"/>
-        <StatCard label="Total spent"  value={`RM ${totalSpent}`}  accent="var(--black)"/>
-        <StatCard label="Pending"      value={`RM ${pendingAmt}`}  accent="var(--amber)"/>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap: isMobile ? 8 : 12 }}>
+        <StatCard label="Total earned" value={`RM ${totalEarned}`} accent="var(--green)" isMobile={isMobile}/>
+        <StatCard label="Total spent"  value={`RM ${totalSpent}`}  accent="var(--black)" isMobile={isMobile}/>
+        <StatCard label="Pending"      value={`RM ${pendingAmt}`}  accent="var(--amber)" isMobile={isMobile}/>
       </div>
 
       {/* Filter chips */}
-      <div style={{ display:"flex", gap:8 }}>
+      <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:2 }}>
         {(["all","paid","pending","overdue"] as const).map(k => (
-          <button key={k} onClick={() => setFilter(k)} style={{ padding:"7px 14px", borderRadius:999, border:`1px solid ${filter===k ? "var(--black)" : "var(--hair)"}`, background: filter===k ? "var(--black)" : "#FFF", color: filter===k ? "var(--off-white)" : "var(--black)", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+          <button key={k} onClick={() => setFilter(k)} style={{ flexShrink:0, padding:"7px 14px", borderRadius:999, border:`1px solid ${filter===k ? "var(--black)" : "var(--hair)"}`, background: filter===k ? "var(--black)" : "#FFF", color: filter===k ? "var(--off-white)" : "var(--black)", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
             {k==="all" ? "All" : k.charAt(0).toUpperCase()+k.slice(1)}
           </button>
         ))}
@@ -602,7 +606,23 @@ function HistoryTab() {
       {/* Job list */}
       <div style={{ display:"flex", flexDirection:"column", gap:0, background:"#FFF", border:"1px solid var(--hair)", borderRadius:14, overflow:"hidden" }}>
         {filtered.length === 0 && <div style={{ padding:32, textAlign:"center", color:"var(--warm-grey)", fontSize:13 }}>No jobs match this filter.</div>}
-        {filtered.map((j, idx) => (
+        {filtered.map((j, idx) => isMobile ? (
+          <div key={j.id} style={{ padding:"14px 16px", borderBottom: idx<filtered.length-1 ? "1px solid var(--pale-grey)" : "none", display:"flex", flexDirection:"column", gap:8 }}>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12 }}>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:14, fontWeight:700, letterSpacing:"-0.01em", lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{j.venue}</div>
+                <div style={{ fontSize:12, color:"var(--warm-grey)", marginTop:2 }}>{j.date} · {j.docType} · {j.area}</div>
+              </div>
+              <div style={{ fontSize:15, fontWeight:700, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.01em", flexShrink:0 }}>RM {j.fee}</div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              <span className={`lk-chip lk-chip--sm${j.role==="picker" ? " lk-chip--solid" : ""}`} style={{ fontSize:10 }}>
+                {j.role==="poster" ? "Posted" : "Picked"}
+              </span>
+              <PaymentBadge status={j.payment}/>
+            </div>
+          </div>
+        ) : (
           <div key={j.id} style={{ padding:"16px 20px", borderBottom: idx<filtered.length-1 ? "1px solid var(--pale-grey)" : "none", display:"flex", alignItems:"center", gap:16 }}>
             <div style={{ width:56, flexShrink:0, textAlign:"center" }}>
               <div style={{ fontSize:13, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>{j.date}</div>
@@ -891,6 +911,44 @@ function BillingTab({ token }: { token?: string }) {
 }
 
 /* ============================================================
+   Contact tab — dummy support details for the pilot. Swap in the
+   firm's real support line, inbox, and office before launch.
+   ============================================================ */
+function ContactTab() {
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
+      <Section title="Reach the Law Kaki team">
+        <InfoRow icon={IC.message}  label="WhatsApp" value="+60 12-345 6789" note="Fastest way to reach us, 9am–9pm MYT"/>
+        <InfoRow icon={IC.phone}    label="Phone"     value="+60 3-2168 8000" note="Mon–Fri, 9am–6pm MYT"/>
+        <InfoRow icon={IC.mail}     label="Email"     value="support@lawkaki.my"/>
+        <InfoRow icon={IC.building} label="Office"    value="Level 12, Menara Multi-Purpose, Jalan Munshi Abdullah, 50100 Kuala Lumpur"/>
+      </Section>
+
+      <Section title="Get in touch">
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <a href="https://wa.me/60123456789" target="_blank" rel="noreferrer"
+            className="lk-btn lk-btn--accent" style={{ textDecoration:"none", justifyContent:"center" }}>
+            <Ic d={IC.message} size={16}/> Chat on WhatsApp
+          </a>
+          <a href="tel:+60321688000"
+            className="lk-btn lk-btn--ghost" style={{ textDecoration:"none", justifyContent:"center" }}>
+            <Ic d={IC.phone} size={16}/> Call us
+          </a>
+          <a href="mailto:support@lawkaki.my"
+            className="lk-btn lk-btn--ghost" style={{ textDecoration:"none", justifyContent:"center" }}>
+            <Ic d={IC.mail} size={16}/> Email us
+          </a>
+        </div>
+      </Section>
+
+      <div style={{ fontSize:12, color:"var(--warm-grey)", padding:"0 4px" }}>
+        Dummy contact details for the pilot — the firm&apos;s real support line goes here before launch.
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    Layout
    ============================================================ */
 function SettingsNav({ onBack, initials, isMobile = false }: { onBack?: () => void; initials: string; isMobile?: boolean }) {
@@ -937,7 +995,7 @@ function SettingsSidebar({ active, onChange, isMobile = false }: { active: Setti
         background:"#FFF", overflowX:"auto", flexShrink:0, position:"sticky", top:64, zIndex:20,
       }}>
         {TABS.map(tab => (
-          <button key={tab.id} onClick={() => onChange(tab.id)} style={{
+          <button key={tab.id} id={tab.id==="contact" ? "lk-settings-contact-nav" : undefined} onClick={() => onChange(tab.id)} style={{
             display:"flex", alignItems:"center", gap:8, padding:"8px 14px", whiteSpace:"nowrap",
             background: active===tab.id ? "var(--black)" : "transparent",
             border:`1px solid ${active===tab.id ? "var(--black)" : "var(--hair)"}`,
@@ -956,7 +1014,7 @@ function SettingsSidebar({ active, onChange, isMobile = false }: { active: Setti
     <nav style={{ width:240, flexShrink:0, padding:"20px 12px", borderRight:"1px solid var(--hair)", background:"#FFF", display:"flex", flexDirection:"column", gap:4 }}>
       <div style={{ fontSize:11, color:"var(--warm-grey)", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", padding:"8px 12px", marginBottom:4 }}>Settings</div>
       {TABS.map(tab => (
-        <button key={tab.id} onClick={() => onChange(tab.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background: active===tab.id ? "var(--off-white)" : "transparent", border:"none", borderRadius:10, cursor:"pointer", width:"100%", textAlign:"left", fontFamily:"inherit", fontSize:14, fontWeight: active===tab.id ? 700 : 500, color: active===tab.id ? "var(--black)" : "var(--warm-grey)", transition:"background 140ms, color 140ms" }}
+        <button key={tab.id} id={tab.id==="contact" ? "lk-settings-contact-nav" : undefined} onClick={() => onChange(tab.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background: active===tab.id ? "var(--off-white)" : "transparent", border:"none", borderRadius:10, cursor:"pointer", width:"100%", textAlign:"left", fontFamily:"inherit", fontSize:14, fontWeight: active===tab.id ? 700 : 500, color: active===tab.id ? "var(--black)" : "var(--warm-grey)", transition:"background 140ms, color 140ms" }}
           onMouseEnter={e => { if (active!==tab.id) e.currentTarget.style.background="var(--off-white)"; }}
           onMouseLeave={e => { if (active!==tab.id) e.currentTarget.style.background="transparent"; }}>
           <Ic d={tab.icon} size={18}/>{tab.label}
@@ -1006,6 +1064,7 @@ export default function Settings({ onClose, onSignOut, token, userName, userPhon
     // bottom of the page gets clipped whenever one is showing.
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:"var(--off-white)" }}>
       <SettingsNav onBack={onClose} initials={user.initials} isMobile={isMobile}/>
+      <ContactCoachmark active/>
 
       {/* Same stacking as the home screen: header first, then critical
           notices — kept here (rather than above this component) so the
@@ -1032,7 +1091,16 @@ export default function Settings({ onClose, onSignOut, token, userName, userPhon
 
       <div style={{ display:"flex", flexDirection: isMobile ? "column" : "row", flex:1, minHeight:0 }}>
         <SettingsSidebar active={tab} onChange={setTab} isMobile={isMobile}/>
-        <main className="lk-scroll" style={{ flex:1, minHeight:0, overflowY:"auto", padding: isMobile ? "20px 16px 40px" : "28px 40px 80px" }}>
+        <main
+          className="lk-scroll"
+          style={{
+            flex:1, minHeight:0, overflowY:"auto",
+            padding: isMobile ? "20px 16px" : "28px 40px 80px",
+            // Extra clearance below the last section so a phone browser's
+            // floating bottom bar doesn't sit on top of it.
+            paddingBottom: isMobile ? "max(40px, env(safe-area-inset-bottom))" : "80px",
+          }}
+        >
           <div style={{ maxWidth:720 }}>
             <div style={{ marginBottom:24 }}>
               <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight:700, letterSpacing:"-0.025em", margin:"0 0 4px" }}>
@@ -1047,8 +1115,9 @@ export default function Settings({ onClose, onSignOut, token, userName, userPhon
                 focusPayment={focusPayment} isMobile={isMobile}
               />
             )}
-            {tab==="history"  && <HistoryTab/>}
+            {tab==="history"  && <HistoryTab isMobile={isMobile}/>}
             {tab==="billing"  && <BillingTab token={token}/>}
+            {tab==="contact"  && <ContactTab/>}
           </div>
         </main>
       </div>

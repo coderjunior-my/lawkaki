@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, CSSProperties } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, CSSProperties } from "react";
 import { Job } from "@/lib/jobs";
 import { DocType } from "@/lib/types";
 import MyJobs from "@/components/MyJobs";
@@ -11,6 +11,7 @@ import TaskTracker from "@/components/TaskTracker";
 import Settings from "@/components/Settings";
 import CoachmarkTour from "@/components/CoachmarkTour";
 import CriticalNotice from "@/components/CriticalNotice";
+import Popover from "@/components/Popover";
 import { getNotificationTarget, NotificationTarget, TaskTab } from "@/lib/notificationActions";
 
 /* ============================================================
@@ -141,6 +142,7 @@ function NotificationBell({
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [userRole, setUserRole]           = useState<"poster" | "picker" | "both">("both");
   const [open, setOpen]                   = useState(false);
+  const bellRef                           = useRef<HTMLButtonElement>(null);
   // null until the user explicitly picks a tab — defaults to their role once fetched.
   const [manualTab, setManualTab]         = useState<"poster" | "picker" | null>(null);
   const tab = manualTab ?? (userRole === "poster" ? "poster" : "picker");
@@ -181,6 +183,7 @@ function NotificationBell({
   return (
     <div id="lk-coach-bell" style={{ position: "relative" }}>
       <button
+        ref={bellRef}
         onClick={() => { const next = !open; setOpen(next); if (next) refresh(); }}
         style={iconBtnStyle}
         aria-label="Notifications"
@@ -196,99 +199,86 @@ function NotificationBell({
         )}
       </button>
 
-      {open && (
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 250 }} onClick={() => setOpen(false)} />
-          <div
-            style={{
-              position: "absolute", top: "calc(100% + 10px)", right: 0, zIndex: 251,
-              width: 360, maxWidth: "calc(100vw - 24px)", maxHeight: 460,
-              background: "#FFFFFF", border: "1px solid var(--hair)", borderRadius: 16,
-              boxShadow: "0 24px 48px -12px rgba(15,31,51,0.28)",
-              display: "flex", flexDirection: "column", overflow: "hidden",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--hair)" }}>
-              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.01em" }}>Notifications</div>
-              {visibleUnreadIds.length > 0 && (
-                <button
-                  onClick={() => markRead(visibleUnreadIds)}
-                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--black)", fontFamily: "inherit", fontSize: 12, fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3, padding: 0 }}
-                >
-                  Mark all as read
-                </button>
-              )}
-            </div>
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={bellRef} align="end" width={360} maxHeight={460} gap={10}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--hair)" }}>
+          <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.01em" }}>Notifications</div>
+          {visibleUnreadIds.length > 0 && (
+            <button
+              onClick={() => markRead(visibleUnreadIds)}
+              style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--black)", fontFamily: "inherit", fontSize: 12, fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3, padding: 0 }}
+            >
+              Mark all as read
+            </button>
+          )}
+        </div>
 
-            {userRole === "both" && (
-              <div style={{ display: "flex", gap: 6, padding: "10px 12px", borderBottom: "1px solid var(--hair)" }}>
-                {(["picker", "poster"] as const).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setManualTab(r)}
-                    style={{
-                      padding: "6px 12px", borderRadius: 999, whiteSpace: "nowrap",
-                      border: `1px solid ${tab === r ? "var(--black)" : "var(--hair)"}`,
-                      background: tab === r ? "var(--black)" : "#FFFFFF",
-                      color: tab === r ? "var(--off-white)" : "var(--black)",
-                      fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                    }}
-                  >
-                    {r === "picker" ? "As picker" : "As poster"}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="lk-scroll" style={{ overflowY: "auto", flex: 1 }}>
-              {visible.length === 0 ? (
-                <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--warm-grey)", fontSize: 13 }}>
-                  No notifications yet.
-                </div>
-              ) : (
-                visible.map((n) => {
-                  const unread = !n.readAt;
-                  const target = getNotificationTarget(n.type, n.role);
-                  return (
-                    <button
-                      key={n.id}
-                      onClick={() => {
-                        markRead([n.id]);
-                        if (target && onNavigate) {
-                          onNavigate(target);
-                          setOpen(false);
-                        }
-                      }}
-                      style={{
-                        display: "block", width: "100%", textAlign: "left",
-                        padding: "12px 16px", background: unread ? "var(--off-white)" : "#FFFFFF",
-                        border: "none", borderBottom: "1px solid var(--pale-grey)",
-                        cursor: target ? "pointer" : "default", fontFamily: "inherit",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                        <span
-                          style={{
-                            width: 6, height: 6, borderRadius: 999, marginTop: 6, flexShrink: 0,
-                            background: unread ? "var(--amber)" : "transparent",
-                          }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: unread ? 700 : 500, color: "var(--black)" }}>{n.title}</div>
-                          {n.body && (
-                            <div style={{ fontSize: 12, color: "var(--warm-grey)", marginTop: 2, lineHeight: 1.4 }}>{n.body}</div>
-                          )}
-                          <div style={{ fontSize: 11, color: "var(--warm-grey)", marginTop: 4 }}>{timeAgo(n.createdAt)}</div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+        {userRole === "both" && (
+          <div style={{ display: "flex", gap: 6, padding: "10px 12px", borderBottom: "1px solid var(--hair)" }}>
+            {(["picker", "poster"] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setManualTab(r)}
+                style={{
+                  padding: "6px 12px", borderRadius: 999, whiteSpace: "nowrap",
+                  border: `1px solid ${tab === r ? "var(--black)" : "var(--hair)"}`,
+                  background: tab === r ? "var(--black)" : "#FFFFFF",
+                  color: tab === r ? "var(--off-white)" : "var(--black)",
+                  fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {r === "picker" ? "As picker" : "As poster"}
+              </button>
+            ))}
           </div>
-        </>
-      )}
+        )}
+
+        <div className="lk-scroll" style={{ overflowY: "auto", flex: 1 }}>
+          {visible.length === 0 ? (
+            <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--warm-grey)", fontSize: 13 }}>
+              No notifications yet.
+            </div>
+          ) : (
+            visible.map((n) => {
+              const unread = !n.readAt;
+              const target = getNotificationTarget(n.type, n.role);
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => {
+                    markRead([n.id]);
+                    if (target && onNavigate) {
+                      onNavigate(target);
+                      setOpen(false);
+                    }
+                  }}
+                  style={{
+                    display: "block", width: "100%", textAlign: "left",
+                    padding: "12px 16px", background: unread ? "var(--off-white)" : "#FFFFFF",
+                    border: "none", borderBottom: "1px solid var(--pale-grey)",
+                    cursor: target ? "pointer" : "default", fontFamily: "inherit",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 6, height: 6, borderRadius: 999, marginTop: 6, flexShrink: 0,
+                        background: unread ? "var(--amber)" : "transparent",
+                      }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: unread ? 700 : 500, color: "var(--black)" }}>{n.title}</div>
+                      {n.body && (
+                        <div style={{ fontSize: 12, color: "var(--warm-grey)", marginTop: 2, lineHeight: 1.4 }}>{n.body}</div>
+                      )}
+                      <div style={{ fontSize: 11, color: "var(--warm-grey)", marginTop: 4 }}>{timeAgo(n.createdAt)}</div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </Popover>
     </div>
   );
 }
@@ -1971,6 +1961,7 @@ export default function Dashboard({
                       pickedJobs={pickedJobs}
                       onNavigate={(v) => setView(v)}
                       initialTab={taskInitialTab}
+                      isMobile={isMobile}
                     />
                   ) : view === "my-jobs" ? (
                     <MyJobs
@@ -1978,12 +1969,14 @@ export default function Dashboard({
                       onConfirmed={(name) =>
                         setToast(`Confirmed. ${name.split(" ")[0]} will cover this job.`)
                       }
+                      isMobile={isMobile}
                     />
                   ) : view === "picked" ? (
                     <MyPickedJobs
                       token={token}
                       onFilterChange={setPickedFilter}
                       onJobsLoaded={setPickedJobs}
+                      isMobile={isMobile}
                     />
                   ) : (
                     <>
@@ -1998,7 +1991,11 @@ export default function Dashboard({
                         style={{
                           flex: 1,
                           overflowY: "auto",
-                          padding: 10,
+                          padding: "10px",
+                          // Extra clearance below the last card so a phone
+                          // browser's floating bottom bar (Safari's compact
+                          // tab bar, etc.) doesn't sit on top of it.
+                          paddingBottom: isMobile ? "max(24px, env(safe-area-inset-bottom))" : "10px",
                           display: "flex",
                           flexDirection: "column",
                           gap: 6,
