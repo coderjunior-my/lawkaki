@@ -1,6 +1,17 @@
 "use client";
 
 import { CSSProperties } from "react";
+import LandingFAQ from "@/components/LandingFAQ";
+import { siteName } from "@/lib/seo";
+
+const serviceJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  serviceType: "Conveyancing signing job dispatch",
+  provider: { "@type": "Organization", name: siteName },
+  areaServed: "MY",
+  audience: { "@type": "Audience", audienceType: "Law firms and lawyers" },
+};
 
 /* ============================================================
    Icons — Lucide-style inline SVGs (local copy; each top-level
@@ -231,7 +242,7 @@ export default function Landing({ onGetStarted }: { onGetStarted: () => void }) 
                   >
                     <Icon d={b.icon} size={15} />
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "-0.01em" }}>{b.audience}</div>
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, letterSpacing: "-0.01em" }}>{b.audience}</h3>
                 </div>
                 <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
                   {b.items.map((item) => (
@@ -266,6 +277,14 @@ export default function Landing({ onGetStarted }: { onGetStarted: () => void }) 
           <CoverageMap />
 
           {/* How it works */}
+          <h2
+            style={{
+              fontSize: 20, fontWeight: 700, letterSpacing: "-0.015em",
+              textAlign: "center", marginTop: 0, marginBottom: 16, lineHeight: 1.25,
+            }}
+          >
+            How it works
+          </h2>
           <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 4, marginBottom: 40 }}>
             {STEPS.map((s, i) => (
               <div
@@ -286,9 +305,9 @@ export default function Landing({ onGetStarted }: { onGetStarted: () => void }) 
                   <Icon d={s.icon} size={18} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: 2 }}>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: 2 }}>
                     {s.title}
-                  </div>
+                  </h3>
                   <div style={{ fontSize: 13.5, color: "var(--warm-grey)", lineHeight: 1.5 }}>
                     {s.body}
                   </div>
@@ -307,8 +326,15 @@ export default function Landing({ onGetStarted }: { onGetStarted: () => void }) 
           <p style={{ textAlign: "center", color: "var(--warm-grey)", fontSize: 12.5, marginTop: 14 }}>
             Sign in with your mobile number via WhatsApp.
           </p>
+
+          <LandingFAQ />
         </div>
       </main>
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
+      />
 
       {/* Footer — matches the auth flow's footer */}
       <div
@@ -324,9 +350,8 @@ export default function Landing({ onGetStarted }: { onGetStarted: () => void }) 
         }}
       >
         <span>© 2026 Law Kaki</span>
-        <span>·</span>
-        <a href="#" style={{ color: "var(--warm-grey)" }}>Privacy</a>
-        <a href="#" style={{ color: "var(--warm-grey)" }}>Terms</a>
+        {/* Privacy/Terms links removed until real pages exist — a dead
+            href="#" on an indexed page is worse than no link at all. */}
       </div>
     </div>
   );

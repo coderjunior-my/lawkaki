@@ -491,9 +491,11 @@ export function PostedJobCard({
 export default function MyJobs({
   token = "",
   onConfirmed,
+  isMobile = false,
 }: {
   token?:      string;
   onConfirmed: (pickerName: string) => void;
+  isMobile?:   boolean;
 }) {
   const [jobs, setJobs]                 = useState<JobWithInterests[]>([]);
   const [loading, setLoading]           = useState(true);
@@ -556,7 +558,8 @@ export default function MyJobs({
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: 10,
+          padding: "10px",
+          paddingBottom: isMobile ? "max(24px, env(safe-area-inset-bottom))" : "10px",
           display: "flex",
           flexDirection: "column",
           gap: 6,

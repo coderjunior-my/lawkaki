@@ -164,16 +164,24 @@ function TodayItinerary({
   jobs,
   expandedId,
   onToggle,
+  isMobile = false,
 }: {
   jobs: PickedJob[];
   expandedId: string | null;
   onToggle: (id: string) => void;
+  isMobile?: boolean;
 }) {
   const totalFee = jobs.reduce((s, j) => s + j.fee, 0);
 
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "14px 12px 24px" }}>
+      <div style={{
+        maxWidth: 560, margin: "0 auto",
+        padding: "14px 12px",
+        // Extra clearance below the last stop so a phone browser's floating
+        // bottom bar doesn't sit on top of it.
+        paddingBottom: isMobile ? "max(24px, env(safe-area-inset-bottom))" : "24px",
+      }}>
         {/* Summary header */}
         <div style={{ marginBottom: 18, display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
           <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>
@@ -383,10 +391,12 @@ export default function MyPickedJobs({
   token = "",
   onFilterChange,
   onJobsLoaded,
+  isMobile = false,
 }: {
   token?:         string;
   onFilterChange?: (filter: StatusFilter) => void;
   onJobsLoaded?:  (jobs: PickedJob[]) => void;
+  isMobile?:      boolean;
 }) {
   const [allPickedJobs, setAllPickedJobs] = useState<PickedJob[]>([]);
   const [loading,       setLoading]       = useState(true);
@@ -456,10 +466,18 @@ export default function MyPickedJobs({
             jobs={jobs}
             expandedId={expandedId}
             onToggle={(id) => setExpandedId(expandedId === id ? null : id)}
+            isMobile={isMobile}
           />
         )
       ) : (
-        <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "10px",
+            paddingBottom: isMobile ? "max(24px, env(safe-area-inset-bottom))" : "10px",
+          }}
+        >
           <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 6 }}>
             {jobs.length === 0 ? (
               <div style={{ padding: 40, textAlign: "center", color: "var(--warm-grey)", fontSize: 13 }}>

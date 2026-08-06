@@ -10,6 +10,7 @@ import {
 } from "react";
 import { LAW_FIRMS, LawFirmOption } from "@/lib/lawFirms";
 import type { UserRole } from "@/lib/types";
+import Popover from "@/components/Popover";
 
 /* ============================================================
    Icons — Lucide-style inline SVGs
@@ -629,6 +630,7 @@ function ProfileStep({
   const [error, setError]           = useState("");
   const [loading, setLoad]          = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const firmFieldRef = useRef<HTMLDivElement>(null);
 
   const firmMatches = (firmSearch
     ? LAW_FIRMS.filter((f) => f.name.toLowerCase().includes(firmSearch.toLowerCase()))
@@ -711,7 +713,7 @@ function ProfileStep({
         </div>
 
         {/* Law firm — two-state searchable dropdown */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, position: "relative" }}>
+        <div ref={firmFieldRef} style={{ display: "flex", flexDirection: "column", gap: 6, position: "relative" }}>
           <label style={labelSt}>
             Law firm <span style={{ color: "var(--amber)" }}>*</span>
           </label>
@@ -758,63 +760,50 @@ function ProfileStep({
             </div>
           )}
 
-          {firmOpen && (
-            <>
-              <div
-                style={{
-                  position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 20,
-                  background: "#FFF", border: "1px solid var(--hair)", borderRadius: 12,
-                  boxShadow: "0 16px 40px -8px rgba(15,31,51,0.18)", padding: 4,
-                  maxHeight: 240, overflowY: "auto",
-                }}
-              >
-                {firmMatches.length === 0 ? (
-                  <div style={{ padding: "12px 14px", fontSize: 13, color: "var(--warm-grey)" }}>
-                    No firms found.
-                  </div>
-                ) : (
-                  firmMatches.map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setFirm(f);
-                        setFirmOpen(false);
-                        setFirmSearch("");
-                        setError("");
-                      }}
-                      style={{
-                        width: "100%", textAlign: "left", padding: "10px 14px",
-                        background: firm?.id === f.id ? "var(--off-white)" : "transparent",
-                        border: "none", borderRadius: 8, cursor: "pointer",
-                        fontFamily: "inherit", fontSize: 14,
-                        fontWeight: firm?.id === f.id ? 600 : 400,
-                        color: "var(--black)", display: "flex", alignItems: "center", gap: 10,
-                      }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--off-white)"; }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.background =
-                          firm?.id === f.id ? "var(--off-white)" : "transparent";
-                      }}
-                    >
-                      <Icon d={I.building} size={14} style={{ color: "var(--warm-grey)", flexShrink: 0 }} />
-                      <span style={{ flex: 1 }}>{f.name}</span>
-                      <span style={{ fontSize: 11, color: "var(--warm-grey)", flexShrink: 0 }}>{f.state}</span>
-                      {firm?.id === f.id && (
-                        <Icon d={I.check} size={14} style={{ color: "var(--black)", flexShrink: 0 }} />
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-              {/* Click-away overlay */}
-              <div
-                style={{ position: "fixed", inset: 0, zIndex: 19 }}
-                onClick={() => setFirmOpen(false)}
-              />
-            </>
-          )}
+          <Popover open={firmOpen} onClose={() => setFirmOpen(false)} anchorRef={firmFieldRef} align="stretch" maxHeight={240} gap={4}
+            panelStyle={{ borderRadius: 12, boxShadow: "0 16px 40px -8px rgba(15,31,51,0.18)" }}>
+            <div className="lk-scroll" style={{ overflowY: "auto", padding: 4 }}>
+              {firmMatches.length === 0 ? (
+                <div style={{ padding: "12px 14px", fontSize: 13, color: "var(--warm-grey)" }}>
+                  No firms found.
+                </div>
+              ) : (
+                firmMatches.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setFirm(f);
+                      setFirmOpen(false);
+                      setFirmSearch("");
+                      setError("");
+                    }}
+                    style={{
+                      width: "100%", textAlign: "left", padding: "10px 14px",
+                      background: firm?.id === f.id ? "var(--off-white)" : "transparent",
+                      border: "none", borderRadius: 8, cursor: "pointer",
+                      fontFamily: "inherit", fontSize: 14,
+                      fontWeight: firm?.id === f.id ? 600 : 400,
+                      color: "var(--black)", display: "flex", alignItems: "center", gap: 10,
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--off-white)"; }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background =
+                        firm?.id === f.id ? "var(--off-white)" : "transparent";
+                    }}
+                  >
+                    <Icon d={I.building} size={14} style={{ color: "var(--warm-grey)", flexShrink: 0 }} />
+                    <span style={{ flex: 1 }}>{f.name}</span>
+                    <span style={{ fontSize: 11, color: "var(--warm-grey)", flexShrink: 0 }}>{f.state}</span>
+                    {firm?.id === f.id && (
+                      <Icon d={I.check} size={14} style={{ color: "var(--black)", flexShrink: 0 }} />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </Popover>
         </div>
 
         {/* Law firm email */}

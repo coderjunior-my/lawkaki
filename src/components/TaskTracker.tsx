@@ -260,6 +260,7 @@ export default function TaskTracker({
   pickedJobs = [],
   onNavigate,
   initialTab,
+  isMobile = false,
 }: {
   token?:      string;
   pickedJobs?: PickedJob[];
@@ -267,6 +268,7 @@ export default function TaskTracker({
   // Set by a notification click-through (e.g. "interest_received" opens
   // straight to the confirm tab) — see src/lib/notificationActions.ts.
   initialTab?: TaskTab;
+  isMobile?:   boolean;
 }) {
   // Dashboard only ever renders TaskTracker inside a view switch, so it
   // unmounts/remounts on every visit to "tasks" — this lazy initial state
@@ -370,7 +372,15 @@ export default function TaskTracker({
           needsConfirmation.length === 0 ? (
             <EmptyNote title="No pending confirmations." sub="Nice and clear." />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 18px 24px" }}>
+            <div
+              style={{
+                display: "flex", flexDirection: "column", gap: 6,
+                padding: "0 18px",
+                // Extra clearance below the last card so a phone browser's
+                // floating bottom bar doesn't sit on top of it.
+                paddingBottom: isMobile ? "max(24px, env(safe-area-inset-bottom))" : "24px",
+              }}
+            >
               {needsConfirmation.map((job) => {
                 const state = effectiveState(job);
                 return (
@@ -399,7 +409,15 @@ export default function TaskTracker({
               <div style={{ fontSize: 12.5, color: "var(--warm-grey)" }}>Enjoy the break, kaki.</div>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 18px 24px" }}>
+            <div
+              style={{
+                display: "flex", flexDirection: "column", gap: 6,
+                padding: "0 18px",
+                // Extra clearance below the last card so a phone browser's
+                // floating bottom bar doesn't sit on top of it.
+                paddingBottom: isMobile ? "max(24px, env(safe-area-inset-bottom))" : "24px",
+              }}
+            >
               {toWorkOn.map((job) => (
                 <PickedJobCard
                   key={job.id}
@@ -414,7 +432,15 @@ export default function TaskTracker({
           pendingReviews.length === 0 ? (
             <EmptyNote title="No reviews pending." sub="You're all caught up." />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 18px 24px" }}>
+            <div
+              style={{
+                display: "flex", flexDirection: "column", gap: 6,
+                padding: "0 18px",
+                // Extra clearance below the last card so a phone browser's
+                // floating bottom bar doesn't sit on top of it.
+                paddingBottom: isMobile ? "max(24px, env(safe-area-inset-bottom))" : "24px",
+              }}
+            >
               {pendingReviews.map((review) => (
                 <PendingReviewCard
                   key={review.id}
